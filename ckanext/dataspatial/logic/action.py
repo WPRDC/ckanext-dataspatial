@@ -3,17 +3,19 @@
 #
 # This file is part of ckanext-dataspatial
 # Created by the Natural History Museum in London, UK
+from ckan.plugins import toolkit
+from ckan.types import Context, DataDict
 
 from ckanext.dataspatial.db import get_connection
-from ckanext.dataspatial.lib.postgis import (create_postgis_columns,
-                                             create_postgis_index,
-                                             populate_postgis_columns)
+from ckanext.dataspatial.lib.postgis import (
+    create_postgis_columns,
+    create_postgis_index,
+    populate_postgis_columns,
+)
 
-from ckan.plugins import toolkit
 
-
-def create_geom_columns(context, data_dict):
-    '''Add geom column to the given resource, and optionally populate them.
+def create_geom_columns(context: Context, data_dict: DataDict):
+    """Add geom column to the given resource, and optionally populate them.
 
     :param context: Current context
     :param data_dict: Parameters:
@@ -26,20 +28,19 @@ def create_geom_columns(context, data_dict):
                   and longitude fields. Defaults to true.
       - index: If true then create an index on the created columns.
                Defaults to true.
-
-    '''
+    """
     try:
-        resource_id = data_dict[u'resource_id']
+        resource_id = data_dict["resource_id"]
     except KeyError:
-        raise toolkit.ValidationError({
-            u'resource_id': u'A Resource id is required'
-            })
-    if u'populate' in data_dict:
-        populate = data_dict[u'populate']
+        raise toolkit.ValidationError({"resource_id": "A Resource id is required"})
+
+    if "populate" in data_dict:
+        populate = data_dict["populate"]
     else:
         populate = True
-    if u'index' in data_dict:
-        index = data_dict[u'index']
+
+    if "index" in data_dict:
+        index = data_dict["index"]
     else:
         index = True
 
@@ -52,8 +53,8 @@ def create_geom_columns(context, data_dict):
         update_geom_columns(context, data_dict)
 
 
-def update_geom_columns(context, data_dict):
-    '''Repopulate the given geom columns
+def update_geom_columns(context: Context, data_dict: DataDict):
+    """Repopulate the given geom columns
 
     :param context: Current context
     :param data_dict: Parameters:
@@ -61,12 +62,12 @@ def update_geom_columns(context, data_dict):
       - latitude_field: The existing latitude field in the column, REQUIRED
       - longitude_field: The existing longitude field in the column, REQUIRED
 
-    '''
+    """
     try:
-        resource_id = data_dict[u'resource_id']
-        lat_field = data_dict[u'latitude_field']
-        long_field = data_dict[u'longitude_field']
+        resource_id = data_dict["resource_id"]
+        lat_field = data_dict["latitude_field"]
+        long_field = data_dict["longitude_field"]
     except KeyError:
-        raise toolkit.ValidationError(u'Missing required field')
+        raise toolkit.ValidationError("Missing required field")
 
     populate_postgis_columns(resource_id, lat_field, long_field)

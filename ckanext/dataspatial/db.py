@@ -5,42 +5,59 @@
 # Created by the Natural History Museum in London, UK
 
 from contextlib import contextmanager
-
-from ckanext.datastore.interfaces import IDatastore
-from sqlalchemy import create_engine, sql, text
-from sqlalchemy.pool import NullPool
+from typing import Optional, Generator
 
 from ckan.plugins import PluginImplementations, toolkit
+from ckanext.datastore.interfaces import IDatastore
+from sqlalchemy import create_engine, sql, text
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.pool import NullPool
+from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import TextClause
 
 _read_engine = None
 _write_engine = None
 
+GEOMETRY_TYPES = {
+    "POINT",
+    "LINESTRING",
+    "POLYGON",
+    "MULTIPOINT",
+    "MULTILINESTRING",
+    "MULTIPOLYGON",
+}
 
-def get_engine(write=False):
-    '''
+
+def get_engine(write=False) -> Engine:
+    """
 
     :param write:  (Default value = False)
 
-    '''
+    """
     if write:
         global _write_engine
         if _write_engine is None:
             # Write engine doesn't really need to keep connections open, as it happens
             #  quite rarely.
-            _write_engine = create_engine(toolkit.config[u'ckan.datastore.write_url'],
-                                          poolclass=NullPool)
+            _write_engine = create_engine(
+                toolkit.config["ckan.datastore.write_url"], poolclass=NullPool
+            )
         return _write_engine
     else:
         global _read_engine
         if _read_engine is None:
-            _read_engine = create_engine(toolkit.config[u'ckan.datastore.read_url'])
+            _read_engine = create_engine(toolkit.config["ckan.datastore.read_url"])
         return _read_engine
 
 
 @contextmanager
-def get_connection(connection=None, write=False, raw=False):
-    '''Context manager to get a database connection
-    
+def get_connection(
+    connection: Optional[Connection] = None,
+    write: bool = False,
+    raw: bool = False,
+) -> Generator[Connection, None, None]:
+    """Context manager to get a database connection
+
     This will either return the provided connection (and then leave it open)
     or create a new connection for this operation only.
 
@@ -49,8 +66,7 @@ def get_connection(connection=None, write=False, raw=False):
         or a read-write connection (Default value = False)
     :param raw: If connection is None, specify whether to get a raw
         connection (Default value = False)
-
-    '''
+    """
     if connection:
         yield connection
     else:
@@ -62,95 +78,114 @@ def get_connection(connection=None, write=False, raw=False):
                 yield new_connection
 
 
-def _index_name(table, field, index_type):
-    '''Get the name of an index from a table, field and index type
+def _index_name(table: str, field: str, index_type: str) -> str:
+    """Get the name of an index from a table, field and index type
 
     :param table: Table name
     :param field: Field name
     :param index_type: Index type
     :returns:  The index name
+    """
+    return f"{table}_{field}_{index_type}"
 
-    '''
-    return u'{}_{}_{}'.format(table, field, index_type)
 
-
-def create_index(connection, table, field, index_type=u'GIST'):
-    '''Create a index on a field
+def create_index(
+    connection: Connection,
+    table: str,
+    field: str,
+    index_type: str = "GIST",
+):
+    """Create a index on a field
 
     :param connection: Database connection
     :param table: Table name
     :param field: Field name
-    :param index_type: Index type (Default value = u'GIST')
-
-    '''
-    s = text(u'''
+    :param index_type: Index type (Default value = 'GIST')
+    """
+    index_name: str = _index_name(table, field, index_type)
+    s: TextClause = text(
+        f"""
       CREATE INDEX "{index_name}"
           ON "{table}"
        USING {index_type}("{field}")
        WHERE "{field}" IS NOT NULL;
-    '''.format(
-        index_name=_index_name(table, field, index_type),
-        table=table,
-        field=field,
-        index_type=index_type
-        ))
+       """
+    )
     connection.execute(s)
 
 
-def index_exists(connection, table, field, type=u'GIST'):
-    '''Test if an index exists
-    
+def index_exists(
+    connection: Connection,
+    table: str,
+    field: str,
+    index_type: str = "GIST",
+) -> bool:
+    """Test if an index exists
+
     Note this will look for index named as per _index_name
 
     :param connection: Database connection
     :param table: Table name
     :param field: Field name
-    :param type: Index type (Default value = u'GIST')
+    :param index_type: Index type (Default value = u'GIST')
     :returns: True if the index exists, False otherwise.
+    """
+    indexes_table = sql.table("pg_indexes")
 
-    '''
-    t = sql.table(u'pg_indexes')
-    s = sql.select([sql.func.count()])
-    s = s.select_from(t)
-    s = s.where(u'indexname' == _index_name(table, field, type))
-    result = connection.execute(s).fetchone()
+    query: Select = (
+        sql.select([sql.func.count()])
+        .select_from(indexes_table)
+        .where("indexname" == _index_name(table, field, index_type))
+    )
+
+    result = connection.execute(query).fetchone()
     return result[0] > 0
 
 
-def fields_exist(connection, table, fields):
-    '''Test if the given fields exist
+def fields_exist(
+    connection: Connection,
+    table: str,
+    fields: list[str],
+) -> bool:
+    """Test if the all the given fields exist
 
     :param connection: Database connection
     :param table: Table to test
     :param fields: List of fields to look for
     :returns: True if all the fields exist, false if not
-
-    '''
-    s = sql.select(u'*', from_obj=sql.table(table)).limit(0)
-    all_fields = connection.execute(s).keys()
-    exists = True
+    """
+    query: Select = sql.select("*", from_obj=sql.table(table)).limit(0)
+    all_fields = connection.execute(query).keys()
     for field in fields:
-        exists = exists and field in all_fields
-    return exists
+        if field not in all_fields:
+            return False
+    return True
 
 
-def create_geom_column(connection, table, field, projection):
-    '''Create a geospatial column on the given table
+def create_geom_column(
+    connection: Connection,
+    table: str,
+    field: str,
+    srid: str | int,
+    geom_type: str,
+) -> None:
+    """Create a geospatial column on the given table
 
     :param connection: The database connection
     :param table: The table to create column on
     :param field: The name of the geom column
-    :param projection: The projection of the geom column
+    :param srid: The projection of the geom column
+    :param geom_type: The type of geometry column to add.
+    """
+    query: Select = sql.select(
+        [sql.func.AddGeometryColumn("public", table, field, srid, geom_type, 2)]
+    )
+    connection.execute(query)
 
-    '''
-    s = sql.select(
-        [sql.func.AddGeometryColumn(u'public', table, field, projection, u'POINT', 2)])
-    connection.execute(s)
 
+def invoke_search_plugins(data_dict: dict, field_types: dict[str, str]):
+    """Invoke IDatastore plugins datastore_search
 
-def invoke_search_plugins(data_dict, field_types):
-    '''Invoke IDatastore plugins datastore_search
-    
     This is for the specific uses of this plugin, and this function only
     returns a subset of the information generated by the plugins.
 
@@ -161,30 +196,23 @@ def invoke_search_plugins(data_dict, field_types):
             where clause,
             list of replacement values
         )
-
-    '''
-    query_dict = {
-        u'select': [],
-        u'sort': [],
-        u'where': []
-        }
+    """
+    query_dict = {"select": [], "sort": [], "where": []}
     for plugin in PluginImplementations(IDatastore):
-        query_dict = plugin.datastore_search(
-            {}, data_dict, field_types, query_dict
-            )
+        query_dict = plugin.datastore_search({}, data_dict, field_types, query_dict)
     clauses = []
     values = []
-    for clause_and_values in query_dict[u'where']:
-        clauses.append(u'(' + clause_and_values[0] + u')')
+    for clause_and_values in query_dict["where"]:
+        clauses.append("(" + clause_and_values[0] + ")")
         values += clause_and_values[1:]
 
-    where_clause = u' AND '.join(clauses)
+    where_clause = " AND ".join(clauses)
     if where_clause:
-        where_clause = u'WHERE ' + where_clause
+        where_clause = "WHERE " + where_clause
 
-    if u'ts_query' in query_dict and query_dict[u'ts_query']:
-        ts_query = query_dict[u'ts_query']
+    if "ts_query" in query_dict and query_dict["ts_query"]:
+        ts_query = query_dict["ts_query"]
     else:
-        ts_query = u''
+        ts_query = ""
 
     return ts_query, where_clause, values

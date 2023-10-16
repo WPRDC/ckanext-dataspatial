@@ -3,13 +3,14 @@
 #
 # This file is part of ckanext-dataspatial
 # Created by the Natural History Museum in London, UK
+from ckan.types import Context, DataDict
 
 from ckanext.dataspatial.lib.postgis import query_extent as postgis_query_extent
 
 
-def datastore_query_extent(context, data_dict):
-    '''Return the geospatial extent of a given datastore queries.
-    
+def datastore_query_extent(context: Context, data_dict: DataDict):
+    """Return the geospatial extent of a given datastore queries.
+
     The arguments as per `datastore_search`, and the return value defines:
     {
         'total_count': Total number of rows matching the query,
@@ -22,6 +23,6 @@ def datastore_query_extent(context, data_dict):
     :param context: Current context
     :param data_dict: Request arguments, as per datastore_search
 
-    '''
+    """
 
     return postgis_query_extent(data_dict)

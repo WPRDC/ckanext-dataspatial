@@ -5,10 +5,10 @@
 # Created by the Natural History Museum in London, UK
 
 config = {
-    u'query_extent': u'postgis',
-    u'postgis.field': u'_geom',
-    u'postgis.mercator_field': u'_the_geom_webmercator',
-    u'solr.index_field': u'_geom',
-    u'solr.latitude_field': u'latitude',
-    u'solr.longitude_field': u'longitude'
-    }
+    "query_extent": "postgis",
+    "postgis.field": "_geom",
+    "postgis.mercator_field": "_geom_webmercator",
+    "solr.index_field": "_geom",
+    "solr.latitude_field": "latitude",
+    "solr.longitude_field": "longitude",
+}
