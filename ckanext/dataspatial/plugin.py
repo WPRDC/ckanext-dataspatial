@@ -9,6 +9,7 @@ import re
 from ckan.plugins import SingletonPlugin, implements, interfaces, toolkit
 from ckanext.datastore.interfaces import IDatastore
 
+from ckanext.dataspatial import cli
 from ckanext.dataspatial.config import config
 from ckanext.dataspatial.logic.action import create_geom_columns, update_geom_columns
 from ckanext.dataspatial.logic.search import datastore_query_extent
@@ -24,7 +25,9 @@ class DataSpatialPlugin(SingletonPlugin):
 
     implements(interfaces.IConfigurable)
     implements(interfaces.IActions)
+    implements(interfaces.IClick)
     implements(IDatastore)
+
     try:
         implements(IDataSolr)
     except NameError:
@@ -63,14 +66,16 @@ class DataSpatialPlugin(SingletonPlugin):
             "datastore_query_extent": datastore_query_extent,
         }
 
+    # IClick
+    def get_commands(self):
+        return [cli.dataspatial]
+
     # IDatastore
     def datastore_validate(self, context, data_dict, all_field_ids):
         """
-
         :param context:
         :param data_dict:
         :param all_field_ids:
-
         """
         # Validate geom fields
         if "fields" in data_dict:

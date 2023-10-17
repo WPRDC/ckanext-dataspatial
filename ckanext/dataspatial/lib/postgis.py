@@ -97,33 +97,12 @@ def create_postgis_index(resource_id: str, connection: Optional[Connection] = No
 
 
 def _populate_columns_with_lat_lng(
-    resource_id: str, lat_field: str = None, long_field: str = None
-):
-    pass
-
-
-def _populate_columns_with_wkt(resource_id: str, wkt_field: str = None):
-    pass
-
-
-def populate_postgis_columns(
     resource_id: str,
-    lat_field: str = None,
-    long_field: str = None,
-    wkt_field: str = None,
+    lat_field: str,
+    lng_field: str,
     progress: Callable[[int], None] = None,
-    connection: Optional[Connection] = None,
+    connection=None,
 ):
-    """Populate the PostGis columns from the give lat & long fields
-
-    :param resource_id: The resource to populate
-    :param lat_field: The latitude field to populate from
-    :param long_field: The longitude field to populate from
-    :param progress: Optionally, a callable invoked at regular interval with
-        the number of rows that were updated (Default value = None)
-    :param connection: Database connection. If None, one will be
-        created for this operation. (Default value = None)
-    """
     with get_connection(connection, write=True, raw=True) as c:
         # This is timing out for big datasets (KE EMu), so we're going to break into a
         #  batch operation
@@ -141,11 +120,11 @@ def populate_postgis_columns(
             FROM "{resource_id}"
             WHERE "{lat_field}" <= 90
               AND "{lat_field}" >= -90
-              AND "{long_field}" <= 180
-              AND "{long_field}" >= -180
+              AND "{lng_field}" <= 180
+              AND "{lng_field}" >= -180
               AND ("{GEOM_FIELD}" IS NULL
                 AND (("{lat_field}" IS NOT NULL OR ST_Y("{GEOM_FIELD}") <> "{lat_field}") OR
-                     ("{long_field}" IS NOT NULL OR ST_X("{GEOM_FIELD}") <> "{long_field}"))
+                     ("{lng_field}" IS NOT NULL OR ST_X("{GEOM_FIELD}") <> "{lng_field}"))
                 )
             """
 
@@ -155,11 +134,10 @@ def populate_postgis_columns(
         incremental_commit_size = 1000
 
         update_sql = f"""
-          UPDATE "{resource_id}"
-          SET "{GEOM_FIELD}" = st_setsrid(st_makepoint("{long_field}"::float8, 
-          "{lat_field}"::float8), 4326),
-              "{GEOM_MERCATOR_FIELD}" = st_transform(st_setsrid(st_makepoint("{
-              long_field}"::float8, "{lat_field}"::float8), 4326), 3857)
+            UPDATE "{resource_id}"
+            SET "{GEOM_FIELD}" = st_setsrid(st_makepoint("{lng_field}"::float8, 
+            "{lat_field}"::float8), 4326),
+              "{GEOM_MERCATOR_FIELD}" = st_transform(st_setsrid(st_makepoint("{lng_field}"::float8, "{lat_field}"::float8), 4326), 3857)
               WHERE _id = %s
          """
 
@@ -179,6 +157,50 @@ def populate_postgis_columns(
                 progress(count)
 
         c.commit()
+
+
+def _populate_columns_with_wkt(
+    resource_id: str,
+    wkt_field: str = None,
+    progress: Callable[[int], None] = None,
+    connection=None,
+):
+    with get_connection(connection, write=True, raw=True) as c:
+        update_query = f"""
+            UPDATE "{resource_id}"
+            SET "{GEOM_FIELD}"          = st_geomfromtext("{wkt_field}", 4326),
+                "{GEOM_MERCATOR_FIELD}" = st_transform(st_geomfromtext("{wkt_field}", 4326), 3857)
+        """
+        c.cursor().execute(update_query)
+
+
+def populate_postgis_columns(
+    resource_id: str,
+    lat_field: str = None,
+    lng_field: str = None,
+    wkt_field: str = None,
+    progress: Callable[[int], None] = None,
+    connection: Optional[Connection] = None,
+):
+    """Populate the PostGis columns from the give lat & long fields
+
+    :param resource_id: The resource to populate
+    :param lat_field: The latitude field to populate from
+    :param lng_field: The longitude field to populate from
+    :param wkt_field: The Well-Known Text field to populate from
+    :param progress: Optionally, a callable invoked at regular interval with
+        the number of rows that were updated (Default value = None)
+    :param connection: Database connection. If None, one will be
+        created for this operation. (Default value = None)
+    """
+    if lat_field and lng_field:
+        _populate_columns_with_lat_lng(
+            resource_id, lat_field, lng_field, progress=progress, connection=connection
+        )
+    elif wkt_field:
+        _populate_columns_with_wkt(
+            resource_id, wkt_field, progress=progress, connection=connection
+        )
 
 
 def query_extent(data_dict: DataDict, connection: Optional[Connection] = None):

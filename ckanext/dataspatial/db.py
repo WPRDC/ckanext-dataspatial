@@ -28,7 +28,7 @@ GEOMETRY_TYPES = {
 }
 
 
-def get_engine(write=False) -> Engine:
+def get_engine(write: bool = False) -> Engine:
     """
 
     :param write:  (Default value = False)

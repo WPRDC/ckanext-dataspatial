@@ -40,13 +40,15 @@ def dataspatial(
         )
 
     if action == "populate-columns" and (
-        not (latitude_field and longitude_field) or wkt_field
+        not (latitude_field and longitude_field) and not wkt_field
     ):
         raise click.UsageError(
             "Latitude and Longitude fields or a WKT field need to be specified to populate columns."
         )
 
-    if action == "create-columns" and not geom_type.upper() in GEOMETRY_TYPES:
+    if action == "create-columns" and (
+        not geom_type or not geom_type.upper() in GEOMETRY_TYPES
+    ):
         raise click.UsageError(f"geom-type must be one of {', '.join(GEOMETRY_TYPES)}.")
 
     # Actions
@@ -55,7 +57,7 @@ def dataspatial(
         create_postgis_columns(resource_id, geom_type)
 
     if action == "create-index":
-        click.echo(f"Creating on geometry columns in {resource_id}.")
+        click.echo(f"Creating index on geometry columns in {resource_id}.")
         create_postgis_index(resource_id)
 
     if action == "populate-columns":
@@ -63,7 +65,7 @@ def dataspatial(
         populate_postgis_columns(
             resource_id,
             lat_field=latitude_field,
-            long_field=longitude_field,
+            lng_field=longitude_field,
             wkt_field=wkt_field,
             progress=_populate_progress_counter,
         )
