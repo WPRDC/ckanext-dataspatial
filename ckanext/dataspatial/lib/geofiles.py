@@ -1,24 +1,18 @@
 #!/usr/bin/env python
 # encoding: utf-8
 import json
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from ckan.logic import NotFound
 from ckan.plugins import toolkit
 from geomet import wkt
 
 from ckanext.dataspatial.lib.postgis import (
-    create_postgis_index,
-    create_postgis_columns,
-    populate_postgis_columns,
     prepare_and_populate_geoms,
 )
-from ckanext.dataspatial.lib.util import get_resource_file_path
+from ckanext.dataspatial.lib.util import get_resource_file_path, DEFAULT_CONTEXT
 
 WKT_FIELD_NAME = "_dataspatial_wkt"
-
-DEFAULT_CONTEXT = {"user": "default"}
 
 
 def load_geojson_to_datastore(

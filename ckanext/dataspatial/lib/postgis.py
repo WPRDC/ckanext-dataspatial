@@ -1,15 +1,11 @@
 #!/usr/bin/env python
 # encoding: utf-8
-from typing import Optional, Callable
+from typing import Optional
 
 from ckan.plugins import toolkit
 from ckan.types import DataDict
 from ckanext.datastore import backend as datastore_db
 from ckanext.datastore.helpers import is_single_statement
-from sqlalchemy import text
-from sqlalchemy.sql import Select
-from sqlalchemy.sql.elements import TextClause
-from sqlalchemy import sql
 
 from ckanext.dataspatial.config import config
 from ckanext.dataspatial.lib.db import (
@@ -17,10 +13,10 @@ from ckanext.dataspatial.lib.db import (
     create_index,
     fields_exist,
     get_connection,
+    Connection,
     index_exists,
     invoke_search_plugins,
-    Connection,
-    get_distinct_field_values,
+    get_field_values,
 )
 from ckanext.dataspatial.lib.util import get_common_geom_type
 
@@ -138,21 +134,20 @@ def _populate_columns_with_lat_lng(
     connection=None,
 ):
     with get_connection(connection, write=True, raw=True) as c:
-        with get_connection(connection, write=True, raw=True) as c:
-            c.cusror().execute(
-                f"""
-                UPDATE "{resource_id}"
-                SET "{GEOM_FIELD}" = st_setsrid(st_makepoint("{lng_field}"::float8, "{lat_field}"::float8), 4326)
-                WHERE "{lat_field}" IS NOT NULL AND "{lng_field}" IS NOT NULL
-             """
-            )
-            c.cusror().execute(
-                f"""
-                UPDATE "{resource_id}" 
-                SET "{GEOM_MERCATOR_FIELD}" = st_transform("{GEOM_FIELD}", 3857)
-                WHERE {GEOM_FIELD} IS NOT NULL
-            """
-            )
+        c.cursor().execute(
+            f"""
+            UPDATE "{resource_id}"
+            SET "{GEOM_FIELD}" = st_setsrid(st_makepoint("{lng_field}"::float8, "{lat_field}"::float8), 4326)
+            WHERE "{lat_field}" IS NOT NULL AND "{lng_field}" IS NOT NULL
+         """
+        )
+        c.cursor().execute(
+            f"""
+            UPDATE "{resource_id}" 
+            SET "{GEOM_MERCATOR_FIELD}" = st_transform("{GEOM_FIELD}", 3857)
+            WHERE {GEOM_FIELD} IS NOT NULL
+        """
+        )
 
 
 def _populate_columns_with_wkt(
@@ -160,6 +155,7 @@ def _populate_columns_with_wkt(
     wkt_field: str = None,
     connection=None,
 ):
+    c: Connection
     with get_connection(connection, write=True, raw=True) as c:
         c.cursor().execute(
             f"""
@@ -263,7 +259,7 @@ def get_wkt_values(
 ) -> list[str]:
     c: Connection
     with get_connection(connection, write=True) as c:
-        return get_distinct_field_values(c, resource_id, wkt_field)
+        return get_field_values(c, resource_id, wkt_field)
 
 
 def prepare_and_populate_geoms(resource: dict):

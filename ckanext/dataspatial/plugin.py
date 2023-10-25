@@ -5,7 +5,6 @@ from typing import cast
 from ckan.common import CKANConfig
 from ckan.plugins import SingletonPlugin, implements, interfaces, toolkit
 from ckan.types import Schema
-from ckanext.datastore.interfaces import IDatastore
 
 from ckanext.dataspatial import cli
 from ckanext.dataspatial.config import config
@@ -25,7 +24,6 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
     implements(interfaces.IDatasetForm)
     implements(interfaces.IConfigurer)
     implements(interfaces.ISignal)
-    implements(IDatastore)
 
     # ISignal
     def get_signal_subscriptions(self):
@@ -97,30 +95,37 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
                 "dataspatial_longitude_field": [
                     toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_latitude_field": [
                     toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_wkt_field": [
                     toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_fields_definition": [
                     toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_geom_resource": [
                     toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_geom_link": [
                     toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_last_geom_updated": [
                     toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("default")(None),
                 ],
             }
         )

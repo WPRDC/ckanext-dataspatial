@@ -205,7 +205,7 @@ def invoke_search_plugins(data_dict: dict, field_types: dict[str, str]):
     return ts_query, where_clause, values
 
 
-def get_distinct_field_values(
+def get_field_values(
     connection: Connection,
     resource_id: str,
     field: str,
@@ -219,7 +219,7 @@ def get_distinct_field_values(
     """
     query: TextClause = text(
         f"""
-    SELECT {field} FROM {resource_id} DISTINCT
+    SELECT "{field}" FROM "{resource_id}"
     """
     )
     results: Iterable[tuple[str]] = connection.execute(query)

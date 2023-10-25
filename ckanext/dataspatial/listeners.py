@@ -3,11 +3,13 @@
 
 import logging
 
+from ckan.plugins import toolkit
+
 from ckanext.dataspatial.lib.geofiles import load_geojson_to_datastore
 from ckanext.dataspatial.lib.postgis import (
     prepare_and_populate_geoms,
 )
-from ckanext.dataspatial.lib.util import should_be_updated
+from ckanext.dataspatial.lib.util import should_be_updated, DEFAULT_CONTEXT
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,12 @@ def new_resource_listener(sender, **kwargs):
         and kwargs["data_dict"]["status"]
         and kwargs["data_dict"]["job_type"] == "push_to_datastore"
     ):
-        logger.debug(
-            f"\n🔴🔴{sender} 🔴🔴\n{kwargs['data_dict']}\n{kwargs['result']}\n🔵🔵🔵🔵"
+        resource_id = kwargs["data_dict"]["metadata"]["resource_id"]
+
+        resource = toolkit.get_action("resource_show")(
+            DEFAULT_CONTEXT, {"id": resource_id}
         )
-        resource = kwargs["data_dict"]["metadata"]
+        logger.debug(resource)
+
         if should_be_updated(resource):
             prepare_and_populate_geoms(resource)

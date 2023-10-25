@@ -7,6 +7,7 @@ from geomet import wkt
 
 STORAGE_PATH = Path(toolkit.config.get("ckan.storage_path"))
 
+DEFAULT_CONTEXT = {"user": "default"}
 
 AVAILABLE_TYPES = {
     "POINT",
@@ -78,9 +79,10 @@ def can_be_spatial(resource: dict):
 
 def out_of_sync(resource: dict):
     return (
-        not resource["dataspatial_last_geom_updated"]
-        or resource["dataspatial_last_geom_updated"] < resource["last_modified"]
-        or resource["dataspatial_last_geom_updated"] < resource["metadata_modified"]
+        not resource.get("dataspatial_last_geom_updated")
+        or resource.get("dataspatial_last_geom_updated") < resource.get("last_modified")
+        or resource.get("dataspatial_last_geom_updated")
+        < resource.get("metadata_modified")
     )
 
 
