@@ -1,11 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
-#
-# This file is part of ckanext-dataspatial
-# Created by the Natural History Museum in London, UK
-
 from contextlib import contextmanager
-from typing import Optional, Generator
+from typing import Optional, Generator, Iterable
 
 from ckan.plugins import PluginImplementations, toolkit
 from ckanext.datastore.interfaces import IDatastore
@@ -17,15 +13,6 @@ from sqlalchemy.sql.elements import TextClause
 
 _read_engine = None
 _write_engine = None
-
-GEOMETRY_TYPES = {
-    "POINT",
-    "LINESTRING",
-    "POLYGON",
-    "MULTIPOINT",
-    "MULTILINESTRING",
-    "MULTIPOLYGON",
-}
 
 
 def get_engine(write: bool = False) -> Engine:
@@ -95,7 +82,7 @@ def create_index(
     field: str,
     index_type: str = "GIST",
 ):
-    """Create a index on a field
+    """Create an index on a field
 
     :param connection: Database connection
     :param table: Table name
@@ -216,3 +203,24 @@ def invoke_search_plugins(data_dict: dict, field_types: dict[str, str]):
         ts_query = ""
 
     return ts_query, where_clause, values
+
+
+def get_distinct_field_values(
+    connection: Connection,
+    resource_id: str,
+    field: str,
+) -> list[str]:
+    """Get a list of distinct values within a datastore field.
+
+    :param connection: database connection
+    :param resource_id: resource ID/ table name to query
+    :param field: field name to query
+    :returns: a list of distinct values
+    """
+    query: TextClause = text(
+        f"""
+    SELECT {field} FROM {resource_id} DISTINCT
+    """
+    )
+    results: Iterable[tuple[str]] = connection.execute(query)
+    return [item[0] for item in results]

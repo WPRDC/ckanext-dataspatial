@@ -1,37 +1,154 @@
 #!/usr/bin/env python
 # encoding: utf-8
-#
-# This file is part of ckanext-dataspatial
-# Created by the Natural History Museum in London, UK
+from typing import cast
 
-import re
-
+from ckan.common import CKANConfig
 from ckan.plugins import SingletonPlugin, implements, interfaces, toolkit
+from ckan.types import Schema
 from ckanext.datastore.interfaces import IDatastore
 
 from ckanext.dataspatial import cli
 from ckanext.dataspatial.config import config
-from ckanext.dataspatial.logic.action import create_geom_columns, update_geom_columns
+from ckanext.dataspatial.listeners import new_resource_listener, upserted_data_listener
+from ckanext.dataspatial.logic.action import populate_geom_columns, update_geom_columns
 from ckanext.dataspatial.logic.search import datastore_query_extent
-
-try:
-    from ckanext.datasolr.interfaces import IDataSolr
-except ImportError:
-    pass
+from ckanext.dataspatial.validators import json_object_list
 
 
-class DataSpatialPlugin(SingletonPlugin):
+class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
     """ """
 
+    implements(interfaces.IValidators)
     implements(interfaces.IConfigurable)
     implements(interfaces.IActions)
     implements(interfaces.IClick)
+    implements(interfaces.IDatasetForm)
+    implements(interfaces.IConfigurer)
+    implements(interfaces.ISignal)
     implements(IDatastore)
 
-    try:
-        implements(IDataSolr)
-    except NameError:
-        pass
+    # ISignal
+    def get_signal_subscriptions(self):
+        return {
+            toolkit.signals.action_succeeded: [
+                new_resource_listener,
+            ],
+            toolkit.signals.datastore_upsert: [
+                upserted_data_listener,
+            ],
+        }
+
+    # IValidators
+
+    def get_validators(self):
+        return {"json_object_list": json_object_list}
+
+    # IConfigurer
+    def update_config(self, config_: CKANConfig):
+        toolkit.add_template_directory(config_, "templates")
+
+    # IDatasetForm
+
+    def _modify_package_schema(self, schema) -> Schema:
+        cast(Schema, schema["resources"]).update(
+            {
+                # status
+                "dataspatial_last_geom_updated": [
+                    toolkit.get_validator("isodate"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                # for preparing tabular files
+                "dataspatial_longitude_field": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                "dataspatial_latitude_field": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                "dataspatial_wkt_field": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                # for preparing geojson
+                "dataspatial_fields_definition": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                    toolkit.get_converter("convert_to_json_if_string"),
+                    toolkit.get_validator("json_object_list"),
+                ],
+                # for linking non-geographic tables
+                "dataspatial_geom_resource": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("resource_id_validator"),
+                    toolkit.get_validator("resource_id_exists"),
+                ],
+                "dataspatial_geom_link": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+            }
+        )
+        return schema
+
+    def show_package_schema(self) -> Schema:
+        schema = super(DataSpatialPlugin, self).show_package_schema()
+        # Add our custom_text field to the dataset schema.
+        cast(Schema, schema["resources"]).update(
+            {
+                "dataspatial_longitude_field": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                "dataspatial_latitude_field": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                "dataspatial_wkt_field": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                "dataspatial_fields_definition": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                "dataspatial_geom_resource": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                "dataspatial_geom_link": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+                "dataspatial_last_geom_updated": [
+                    toolkit.get_validator("ignore_not_sysadmin"),
+                    toolkit.get_validator("ignore_empty"),
+                ],
+            }
+        )
+
+        return schema
+
+    def create_package_schema(self) -> Schema:
+        schema = super(DataSpatialPlugin, self).create_package_schema()
+        schema = self._modify_package_schema(schema)
+        return schema
+
+    def update_package_schema(self) -> Schema:
+        schema = super(DataSpatialPlugin, self).update_package_schema()
+        schema = self._modify_package_schema(schema)
+        return schema
+
+    def is_fallback(self) -> bool:
+        # Return True to register this plugin as the default handler for
+        # package types not handled by any other IDatasetForm plugin.
+        return True
+
+    def package_types(self) -> list[str]:
+        # This plugin doesn't handle any special package types, it just
+        # registers itself as the default (above).
+        return []
 
     # IConfigurable
     def configure(self, ckan_config):
@@ -46,12 +163,14 @@ class DataSpatialPlugin(SingletonPlugin):
             if not long_name.startswith(prefix):
                 continue
             name = long_name[len(prefix) :]
+
             if name in config_items:
                 config[name] = ckan_config[long_name]
             else:
                 raise toolkit.ValidationError(
                     {long_name: "Unknown configuration setting"}
                 )
+
         if config["query_extent"] not in ["postgis", "solr"]:
             raise toolkit.ValidationError(
                 {"dataspatial.query_extent": "Should be either of postgis or solr"}
@@ -61,108 +180,10 @@ class DataSpatialPlugin(SingletonPlugin):
     def get_actions(self):
         """ """
         return {
-            "create_geom_columns": create_geom_columns,
-            "update_geom_columns": update_geom_columns,
+            "populate_geom_columns": update_geom_columns,
             "datastore_query_extent": datastore_query_extent,
         }
 
     # IClick
     def get_commands(self):
         return [cli.dataspatial]
-
-    # IDatastore
-    def datastore_validate(self, context, data_dict, all_field_ids):
-        """
-        :param context:
-        :param data_dict:
-        :param all_field_ids:
-        """
-        # Validate geom fields
-        if "fields" in data_dict:
-            geom_fields = [config["postgis.field"], config["postgis.mercator_field"]]
-            data_dict["fields"] = [
-                f for f in data_dict["fields"] if f not in geom_fields
-            ]
-        # Validate geom filters
-        try:
-            # We'll just check that this *looks* like a WKT, in which case we will trust
-            # it's valid. Worst case the query will fail, which is handled gracefully
-            # anyway.
-            for i, v in enumerate(data_dict["filters"]["_tmgeom"]):
-                if re.search("^\s*(POLYGON|MULTIPOLYGON)\s*\([-+0-9,(). ]+\)\s*$", v):
-                    del data_dict["filters"]["_tmgeom"][i]
-            if len(data_dict["filters"]["_tmgeom"]) == 0:
-                del data_dict["filters"]["_tmgeom"]
-        except KeyError:
-            pass
-        except TypeError:
-            pass
-
-        return data_dict
-
-    def datastore_search(self, context, data_dict, all_field_ids, query_dict):
-        """
-
-        :param context:
-        :param data_dict:
-        :param all_field_ids:
-        :param query_dict:
-
-        """
-        try:
-            tmgeom = data_dict["filters"]["_tmgeom"]
-        except KeyError:
-            return query_dict
-
-        clauses = []
-        field_name = config["postgis.field"]
-        for geom in tmgeom:
-            clauses.append(
-                (
-                    'ST_Intersects("{field}", ST_GeomFromText(%s, 4326))'.format(
-                        field=field_name
-                    ),
-                    geom,
-                )
-            )
-
-        query_dict["where"] += clauses
-        return query_dict
-
-    def datastore_delete(self, context, data_dict, all_field_ids, query_dict):
-        """
-
-        :param context:
-        :param data_dict:
-        :param all_field_ids:
-        :param query_dict:
-
-        """
-        return query_dict
-
-    ## IDataSolr
-    def datasolr_validate(self, context, data_dict, fields_types):
-        """
-
-        :param context:
-        :param data_dict:
-        :param fields_types:
-
-        """
-        return self.datastore_validate(context, data_dict, fields_types)
-
-    def datasolr_search(self, context, data_dict, fields_types, query_dict):
-        """
-
-        :param context:
-        :param data_dict:
-        :param fields_types:
-        :param query_dict:
-
-        """
-
-        # FIXME: Remove _tmgeom search
-        if "filters" in query_dict and query_dict["filters"]:
-            query_dict["filters"].pop("_tmgeom", None)
-
-        return query_dict

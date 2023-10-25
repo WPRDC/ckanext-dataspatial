@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 # encoding: utf-8
-#
-# This file is part of ckanext-dataspatial
-# Created by the Natural History Museum in London, UK
 from ckan.types import Context, DataDict
 
 from ckanext.dataspatial.lib.postgis import query_extent as postgis_query_extent

@@ -1,17 +1,18 @@
 #!/usr/bin/env python
 # encoding: utf-8
-#
-# This file is part of ckanext-dataspatial
-# Created by the Natural History Museum in London, UK
 from typing import Optional, Callable
 
 from ckan.plugins import toolkit
 from ckan.types import DataDict
 from ckanext.datastore import backend as datastore_db
 from ckanext.datastore.helpers import is_single_statement
+from sqlalchemy import text
+from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import TextClause
+from sqlalchemy import sql
 
 from ckanext.dataspatial.config import config
-from ckanext.dataspatial.db import (
+from ckanext.dataspatial.lib.db import (
     create_geom_column,
     create_index,
     fields_exist,
@@ -19,10 +20,21 @@ from ckanext.dataspatial.db import (
     index_exists,
     invoke_search_plugins,
     Connection,
+    get_distinct_field_values,
 )
+from ckanext.dataspatial.lib.util import get_common_geom_type
 
 GEOM_MERCATOR_FIELD: str = config["postgis.mercator_field"]
 GEOM_FIELD: str = config["postgis.field"]
+
+GEOMETRY_TYPES = {
+    "POINT",
+    "LINESTRING",
+    "POLYGON",
+    "MULTIPOINT",
+    "MULTILINESTRING",
+    "MULTIPOLYGON",
+}
 
 
 def has_postgis_columns(
@@ -72,7 +84,6 @@ def create_postgis_columns(
     :param geom_type: The type of geometry being created.
     :param connection: Database connection. If None, one will be
         created for this operation. (Default value = None)
-
     """
     c: Connection
     with get_connection(connection, write=True) as c:
@@ -96,90 +107,11 @@ def create_postgis_index(resource_id: str, connection: Optional[Connection] = No
             create_index(c, resource_id, GEOM_MERCATOR_FIELD)
 
 
-def _populate_columns_with_lat_lng(
-    resource_id: str,
-    lat_field: str,
-    lng_field: str,
-    progress: Callable[[int], None] = None,
-    connection=None,
-):
-    with get_connection(connection, write=True, raw=True) as c:
-        # This is timing out for big datasets (KE EMu), so we're going to break into a
-        #  batch operation
-        # We need two cursors, one for reading; one for writing
-        # And the write cursor will be committed every x number of times (
-        # incremental_commit_size)
-        read_cursor = c.cursor()
-        write_cursor = c.cursor()
-
-        # Retrieve all IDs of records that require updating
-        # Either: lat/lng field doesn't match that in the geom column
-        # OR geom is  null and /lat/lon is populated
-        read_sql = f"""
-            SELECT _id
-            FROM "{resource_id}"
-            WHERE "{lat_field}" <= 90
-              AND "{lat_field}" >= -90
-              AND "{lng_field}" <= 180
-              AND "{lng_field}" >= -180
-              AND ("{GEOM_FIELD}" IS NULL
-                AND (("{lat_field}" IS NOT NULL OR ST_Y("{GEOM_FIELD}") <> "{lat_field}") OR
-                     ("{lng_field}" IS NOT NULL OR ST_X("{GEOM_FIELD}") <> "{lng_field}"))
-                )
-            """
-
-        read_cursor.execute(read_sql)
-
-        count = 0
-        incremental_commit_size = 1000
-
-        update_sql = f"""
-            UPDATE "{resource_id}"
-            SET "{GEOM_FIELD}" = st_setsrid(st_makepoint("{lng_field}"::float8, 
-            "{lat_field}"::float8), 4326),
-              "{GEOM_MERCATOR_FIELD}" = st_transform(st_setsrid(st_makepoint("{lng_field}"::float8, "{lat_field}"::float8), 4326), 3857)
-              WHERE _id = %s
-         """
-
-        # todo: move all this work to postgres or at least do more than one row per query
-        while True:
-            output = read_cursor.fetchmany(incremental_commit_size)
-            if not output:
-                break
-
-            for row in output:
-                count += 1
-                write_cursor.execute(update_sql, ([row[0]]))
-
-            # commit, invoked every incremental commit size
-            c.commit()
-            if progress:
-                progress(count)
-
-        c.commit()
-
-
-def _populate_columns_with_wkt(
-    resource_id: str,
-    wkt_field: str = None,
-    progress: Callable[[int], None] = None,
-    connection=None,
-):
-    with get_connection(connection, write=True, raw=True) as c:
-        update_query = f"""
-            UPDATE "{resource_id}"
-            SET "{GEOM_FIELD}"          = st_geomfromtext("{wkt_field}", 4326),
-                "{GEOM_MERCATOR_FIELD}" = st_transform(st_geomfromtext("{wkt_field}", 4326), 3857)
-        """
-        c.cursor().execute(update_query)
-
-
 def populate_postgis_columns(
     resource_id: str,
     lat_field: str = None,
     lng_field: str = None,
     wkt_field: str = None,
-    progress: Callable[[int], None] = None,
     connection: Optional[Connection] = None,
 ):
     """Populate the PostGis columns from the give lat & long fields
@@ -188,18 +120,82 @@ def populate_postgis_columns(
     :param lat_field: The latitude field to populate from
     :param lng_field: The longitude field to populate from
     :param wkt_field: The Well-Known Text field to populate from
-    :param progress: Optionally, a callable invoked at regular interval with
-        the number of rows that were updated (Default value = None)
     :param connection: Database connection. If None, one will be
         created for this operation. (Default value = None)
     """
     if lat_field and lng_field:
         _populate_columns_with_lat_lng(
-            resource_id, lat_field, lng_field, progress=progress, connection=connection
+            resource_id, lat_field, lng_field, connection=connection
         )
     elif wkt_field:
-        _populate_columns_with_wkt(
-            resource_id, wkt_field, progress=progress, connection=connection
+        _populate_columns_with_wkt(resource_id, wkt_field, connection=connection)
+
+
+def _populate_columns_with_lat_lng(
+    resource_id: str,
+    lat_field: str,
+    lng_field: str,
+    connection=None,
+):
+    with get_connection(connection, write=True, raw=True) as c:
+        with get_connection(connection, write=True, raw=True) as c:
+            c.cusror().execute(
+                f"""
+                UPDATE "{resource_id}"
+                SET "{GEOM_FIELD}" = st_setsrid(st_makepoint("{lng_field}"::float8, "{lat_field}"::float8), 4326)
+                WHERE "{lat_field}" IS NOT NULL AND "{lng_field}" IS NOT NULL
+             """
+            )
+            c.cusror().execute(
+                f"""
+                UPDATE "{resource_id}" 
+                SET "{GEOM_MERCATOR_FIELD}" = st_transform("{GEOM_FIELD}", 3857)
+                WHERE {GEOM_FIELD} IS NOT NULL
+            """
+            )
+
+
+def _populate_columns_with_wkt(
+    resource_id: str,
+    wkt_field: str = None,
+    connection=None,
+):
+    with get_connection(connection, write=True, raw=True) as c:
+        c.cursor().execute(
+            f"""
+            UPDATE "{resource_id}"
+            SET "{GEOM_FIELD}" = st_geomfromtext("{wkt_field}", 4326)
+            WHERE "{wkt_field}" IS NOT NULL
+        """
+        )
+
+        c.cursor().execute(
+            f"""
+            UPDATE "{resource_id}"
+            SET "{GEOM_MERCATOR_FIELD}" = st_transform("{GEOM_FIELD}", 3857)
+            WHERE {GEOM_FIELD} IS NOT NULL 
+        """
+        )
+
+
+def _populate_column_with_geojson(
+    resource_id: str,
+    geojson_field: str = None,
+    connection=None,
+):
+    with get_connection(connection, write=True, raw=True) as c:
+        c.cursor().execute(
+            f"""
+            UPDATE "{resource_id}"
+            SET "{GEOM_FIELD}"          = ST_GeomFromGeoJSON("{geojson_field}"),
+            WHERE "{geojson_field}" IS NOT NULL
+        """
+        )
+        c.cursor().execute(
+            f"""
+            UPDATE "{resource_id}"
+            SET "{GEOM_MERCATOR_FIELD}" = st_transform("{GEOM_FIELD}", 3857)
+        """
         )
 
 
@@ -260,3 +256,46 @@ def query_extent(data_dict: DataDict, connection: Optional[Connection] = None):
     if result["geom_count"] > 0:
         result["bounds"] = ((r["ymin"], r["xmin"]), (r["ymax"], r["xmax"]))
     return result
+
+
+def get_wkt_values(
+    resource_id: str, wkt_field: str, connection: Optional[Connection] = None
+) -> list[str]:
+    c: Connection
+    with get_connection(connection, write=True) as c:
+        return get_distinct_field_values(c, resource_id, wkt_field)
+
+
+def prepare_and_populate_geoms(resource: dict):
+    """Adds geometric data fields, geometric indexes and then populates the geometric fields based
+    on extant data and dataspatial metadata.
+
+    :param resource: CKAN Resource dict
+    """
+    if (
+        resource["dataspatial_latitude_field"]
+        and resource["dataspatial_longitude_field"]
+    ):
+        if not has_postgis_columns(resource["id"]):
+            create_postgis_columns(resource["id"], "POINT")
+        if not has_postgis_index(resource["id"]):
+            create_postgis_index(resource["id"])
+
+        populate_postgis_columns(
+            resource["id"],
+            lat_field=resource["dataspatial_latitude_field"],
+            lng_field=resource["dataspatial_longitude_field"],
+        )
+
+    elif resource["dataspatial_wkt_field"]:
+        wkt_values = get_wkt_values(resource["id"], resource["dataspatial_wkt_field"])
+        geo_type = get_common_geom_type(wkt_values)
+
+        if not has_postgis_columns(resource["id"]):
+            create_postgis_columns(resource["id"], geo_type)
+        if not has_postgis_index(resource["id"]):
+            create_postgis_index(resource["id"])
+
+        populate_postgis_columns(
+            resource["id"], wkt_field=resource["dataspatial_wkt_field"]
+        )
