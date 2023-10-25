@@ -1,12 +1,15 @@
+#!/usr/bin/env python
+# encoding: utf-8
 import logging
 
 import click
 
-from ckanext.dataspatial.db import GEOMETRY_TYPES
+from ckanext.dataspatial.lib.geofiles import load_geojson_to_datastore
 from ckanext.dataspatial.lib.postgis import (
     create_postgis_columns,
     create_postgis_index,
     populate_postgis_columns,
+    GEOMETRY_TYPES,
 )
 
 log = logging.getLogger("ckan")
@@ -32,6 +35,8 @@ def dataspatial(
     ACTION: one of (create-columns | create-index | populate-columns)
     RESOURCE_ID: ID of resource to modify/update
     """
+    if action == "file":
+        load_geojson_to_datastore(resource_id)
 
     # Validate arguments
     if action not in ["create-columns", "create-index", "populate-columns"]:
@@ -67,14 +72,5 @@ def dataspatial(
             lat_field=latitude_field,
             lng_field=longitude_field,
             wkt_field=wkt_field,
-            progress=_populate_progress_counter,
         )
     click.echo("Done!")
-
-
-def _populate_progress_counter(count):
-    """Print progress message
-
-    :param count:
-    """
-    click.echo(f"Updated {count} rows")
