@@ -2,8 +2,9 @@
 # ckanext-dataspatial
 _A CKAN extension that provides geospatial awareness of datastore data._
 
-![WPRDC Logo](.github/wprdc-mark-light.png#gh-light-mode-only)
-![WPRDC Logo](.github/wprdc-mark-dark.png#gh-dark-mode-only)
+<img src=".github/wprdc-mark-light.png#gh-light-mode-only" height="50px" alt="WPRDC Logo"/>
+<img src=".github/wprdc-mark-dark.png#gh-dark-mode-only" height="50px" alt="WPRDC Logo"/>
+
 
 __A product of the [Western Pennsylvania Regional Data Center](https://www.wprdc.org).__
 
