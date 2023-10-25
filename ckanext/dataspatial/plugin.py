@@ -9,8 +9,8 @@ from ckanext.datastore.interfaces import IDatastore
 
 from ckanext.dataspatial import cli
 from ckanext.dataspatial.config import config
-from ckanext.dataspatial.listeners import new_resource_listener, upserted_data_listener
-from ckanext.dataspatial.logic.action import populate_geom_columns, update_geom_columns
+from ckanext.dataspatial.listeners import new_resource_listener
+from ckanext.dataspatial.logic.action import populate_geom_columns
 from ckanext.dataspatial.logic.search import datastore_query_extent
 from ckanext.dataspatial.validators import json_object_list
 
@@ -32,9 +32,6 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
         return {
             toolkit.signals.action_succeeded: [
                 new_resource_listener,
-            ],
-            toolkit.signals.datastore_upsert: [
-                upserted_data_listener,
             ],
         }
 
@@ -127,7 +124,6 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
                 ],
             }
         )
-
         return schema
 
     def create_package_schema(self) -> Schema:
@@ -180,7 +176,7 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
     def get_actions(self):
         """ """
         return {
-            "populate_geom_columns": update_geom_columns,
+            "populate_geom_columns": populate_geom_columns,
             "datastore_query_extent": datastore_query_extent,
         }
 
