@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 def new_resource_listener(sender, **kwargs):
     # when a geojson file is uploaded or modified
-    if sender in ["resource_create", "resource_update"]:
-        resource = kwargs["data_dict"]
+    if sender in ["resource_create"]:
+        resource = kwargs["result"]
         if resource["format"].lower() == "geojson":
             logger.info("🗺️ Loading/updating GeoJSON in datastore.")
             load_geojson_to_datastore(resource["id"])
@@ -25,15 +25,16 @@ def new_resource_listener(sender, **kwargs):
     # when a tabular file is pushed to the datastore
     if (
         sender in ["datapusher_hook"]
-        and kwargs["data_dict"]["status"]
+        and kwargs["data_dict"]["status"] == "complete"
         and kwargs["data_dict"]["job_type"] == "push_to_datastore"
     ):
         resource_id = kwargs["data_dict"]["metadata"]["resource_id"]
-
+        logger.info(f"Resource {resource_id} pushed to datastore.")
         resource = toolkit.get_action("resource_show")(
             DEFAULT_CONTEXT, {"id": resource_id}
         )
-        logger.debug(resource)
-
         if should_be_updated(resource):
+            logger.info(f"Resource {resource_id} being geocoded...")
             prepare_and_populate_geoms(resource)
+        else:
+            logger.info(f"Resource {resource_id} not being updated.")

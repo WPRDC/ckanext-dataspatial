@@ -48,6 +48,9 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
         cast(Schema, schema["resources"]).update(
             {
                 # status
+                "dataspatial_active": [
+                    toolkit.get_validator("boolean_validator"),
+                ],
                 "dataspatial_last_geom_updated": [
                     toolkit.get_validator("isodate"),
                     toolkit.get_validator("ignore_empty"),
@@ -93,39 +96,37 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
         cast(Schema, schema["resources"]).update(
             {
                 "dataspatial_longitude_field": [
-                    toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
                     toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_latitude_field": [
-                    toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
                     toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_wkt_field": [
-                    toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
                     toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_fields_definition": [
-                    toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
                     toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_geom_resource": [
-                    toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
                     toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_geom_link": [
-                    toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
                     toolkit.get_validator("default")(None),
                 ],
                 "dataspatial_last_geom_updated": [
-                    toolkit.get_validator("ignore_not_sysadmin"),
                     toolkit.get_validator("ignore_empty"),
                     toolkit.get_validator("default")(None),
+                ],
+                "dataspatial_active": [
+                    toolkit.get_validator("boolean_validator"),
+                    toolkit.get_validator("ignore_empty"),
+                    toolkit.get_validator("default")(False),
                 ],
             }
         )

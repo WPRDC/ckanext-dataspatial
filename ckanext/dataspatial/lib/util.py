@@ -9,25 +9,7 @@ STORAGE_PATH = Path(toolkit.config.get("ckan.storage_path"))
 
 DEFAULT_CONTEXT = {"user": "default"}
 
-AVAILABLE_TYPES = {
-    "POINT",
-    "LINESTRING",
-    "POLYGON",
-    "MULTIPOINT",
-    "MULTILINESTRING",
-    "MULTIPOLYGON",
-    "GEOMETRYCOLLECTION",
-    # -- currently no supported --
-    # "UNKNOWN",
-    # "CIRCULARSTRING",
-    # "COMPOUNDCURVE",
-    # "CURVEPOLYGON",
-    # "MULTICURVE",
-    # "MULTISURFACE",
-    # "POLYHEDRALSURFACE",
-    # "TRIANGLE",
-    # "TIN"
-}
+WKT_FIELD_NAME = "dataspatial_wkt"
 
 
 def get_common_geom_type(wkt_values: list[str]) -> str:
