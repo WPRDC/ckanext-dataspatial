@@ -1,0 +1,6 @@
+{% ckan_extends %}
+
+{% block content_primary_nav %}
+  {{ super() }}
+  {{ h.build_nav_icon('dataspatial.resource_dataspatial', _('GeoSpatial'), id=pkg.name, resource_id=res.id, icon='map') }}
+{% endblock %}

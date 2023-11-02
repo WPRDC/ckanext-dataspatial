@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # encoding: utf-8
 from contextlib import contextmanager
 from typing import Optional, Generator, Iterable

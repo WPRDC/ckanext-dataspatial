@@ -1,2 +1,4 @@
 pyutilib
 geomet
+python-dateutil
+requests[security]
