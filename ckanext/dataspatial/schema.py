@@ -4,11 +4,12 @@ from ckan.types import Schema
 
 from ckan.plugins.toolkit import get_validator, get_converter
 
+from ckanext.dataspatial.validators import json_object_list
+
 boolean_validator = get_validator("boolean_validator")
 isodate = get_validator("isodate")
 ignore_empty = get_validator("ignore_empty")
 ignore_not_sysadmin = get_validator("ignore_not_sysadmin")
-json_object_list = get_validator("json_object_list")
 resource_id_validator = get_validator("resource_id_validator")
 resource_id_exists = get_validator("resource_id_exists")
 default = get_validator("default")

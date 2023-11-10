@@ -19,10 +19,9 @@ def get_blueprints():
 
 class ResourceDataView(MethodView):
     def post(self, id: str, resource_id: str):
-        try:
-            toolkit.get_action("dataspatial_populate")({}, {"resource_id": resource_id})
-        except logic.ValidationError:
-            pass
+        toolkit.get_action("dataspatial_submit")(
+            {"user": "default"}, {"resource_id": resource_id}
+        )
 
         return core_helpers.redirect_to(
             "dataspatial.resource_dataspatial", id=id, resource_id=resource_id
@@ -40,19 +39,19 @@ class ResourceDataView(MethodView):
         except (logic.NotFound, logic.NotAuthorized):
             base.abort(404, _("Resource not found"))
 
-        try:
-            datapusher_status = toolkit.get_action("datapusher_status")(
-                {}, {"resource_id": resource_id}
-            )
-        except logic.NotFound:
-            datapusher_status = {}
-        except logic.NotAuthorized:
-            base.abort(403, _("Not authorized to see this page"))
+        # try:
+        #     datapusher_status = toolkit.get_action("datapusher_status")(
+        #         {}, {"resource_id": resource_id}
+        #     )
+        # except logic.NotFound:
+        #     datapusher_status = {}
+        # except logic.NotAuthorized:
+        #     base.abort(403, _("Not authorized to see this page"))
 
         return base.render(
             "dataspatial/resource_dataspatial.html",
             extra_vars={
-                "status": datapusher_status,
+                # "status": datapusher_status,
                 "pkg_dict": pkg_dict,
                 "resource": resource,
             },

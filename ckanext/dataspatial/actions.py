@@ -3,17 +3,16 @@ import datetime
 import json
 import logging
 
-from ckan.logic import side_effect_free
+import ckan.lib.jobs as rq_jobs
 from ckan.plugins import toolkit
 from ckan.types import Context, DataDict
-import ckan.lib.jobs as rq_jobs
-
-from dateutil.parser import parse as parse_date
 from dateutil.parser import isoparse as parse_iso_date
+from dateutil.parser import parse as parse_date
 
-from ckanext import jobs
+from ckanext.dataspatial import jobs
+from ckanext.dataspatial.jobs import JOB_TYPE
 from ckanext.dataspatial.lib.postgis import prepare_and_populate_geoms
-from ckanext.jobs import JOB_TYPE
+from ckanext.dataspatial.types import JOB_COMPLETION_STATUS
 
 enqueue_job = toolkit.enqueue_job
 get_queue = rq_jobs.get_queue
@@ -34,11 +33,6 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
     has not been submitted, i.e. if a bug is encountered
     """
     # validate arguments and setup first
-    api_token = config.get("ckanext.dataspatial.api_token", None)
-    if not api_token:
-        raise toolkit.ValidationError(
-            "API token must be configured in ckan.ini (ckanext.dataspatial.api_token)"
-        )
     resource_id = toolkit.get_or_bust(data_dict, "resource_id")
     try:
         resource_dict = toolkit.get_action("resource_show")(
@@ -47,7 +41,10 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
                 "id": resource_id,
             },
         )
-        if not resource_dict.get("datastore_active"):
+        if (
+            not resource_dict.get("datastore_active")
+            and resource_dict.get("format").lower() != "geojson"
+        ):
             raise toolkit.ValidationError(
                 "Resource data must be loaded into the datastore."
             )
@@ -124,23 +121,12 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
         {"session": model.meta.create_local_session(), "ignore_auth": True}, task
     )
 
-    # Start background job
-    # todo make hook function
-    callback_url = toolkit.url_for(
-        "api.action", ver=3, logic_function="dataspatial_hook", qualified=True
-    )
     # todo add to config
     timeout = config.get("ckanext.dataspatial.job_timeout", "3600")
     try:
         job = enqueue_job(
             jobs.georeference_datastore_table,
-            [
-                resource_dict,
-                api_token,
-                callback_url,
-                config["ckan.site_url"],
-                task["last_updated"],
-            ],
+            [resource_id, task["last_updated"], logger],
             rq_kwargs={"timeout": timeout},
         )
     except Exception as e:
@@ -182,7 +168,7 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
 
     resubmit = False
 
-    if status in ("complete",):
+    if status == JOB_COMPLETION_STATUS:
         resource_dict = toolkit.get_action("resource_show")(
             context, {"id": resource_id}
         )
@@ -214,58 +200,9 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
             "dataspatial_submit", context, {"resource_id": resource_id}
         )
         logger.debug(
-            f"Resource {resource_id} has been modified. Resubmitting to DataPusher"
+            f"Resource {resource_id} has been modified. Resubmitting for georeferencing."
         )
         toolkit.get_action("dataspatial_submit")(context, {"resource_id": resource_id})
-
-
-@side_effect_free
-def dataspatial_status(context: Context, data_dict: DataDict):
-    """Get the status of a ckanext-dataspatial job for a certain resource.
-
-    :param context: Current context
-    :param data_dict: Parameters:
-      - resource_id: The ID of the resource the job is working on.
-    """
-    pass
-    # todo - reimplement this t
-    # toolkit.check_access("dataspatial_status", context, data_dict)
-    #
-    # resource_id = toolkit.get_or_bust(data_dict, "resource_id")
-    #
-    # task = toolkit.get_action("task_status_show")(
-    #     context, {"entity_id": resource_id, "task_type": TASK_TYPE, "key": TASK_KEY}
-    # )
-    #
-    # value = json.loads(task["value"])
-    # job_id = value.get("job_id")
-    # url = None
-    # job_detail = None
-    #
-    # if job_id:
-    #     # get logs from the xloader db
-    #     db.init(config)
-    #     job_detail = db.get_job(job_id)
-    #
-    #     if job_detail and job_detail.get("logs"):
-    #         for log in job_detail["logs"]:
-    #             if "timestamp" in log and isinstance(
-    #                 log["timestamp"], datetime.datetime
-    #             ):
-    #                 log["timestamp"] = log["timestamp"].isoformat()
-    # try:
-    #     error = json.loads(task["error"])
-    # except ValueError:
-    #     # this happens occasionally, such as when the job times out
-    #     error = task["error"]
-    # return {
-    #     "status": task["state"],
-    #     "job_id": job_id,
-    #     "job_url": url,
-    #     "last_updated": task["last_updated"],
-    #     "task_info": job_detail,
-    #     "error": error,
-    # }
 
 
 def dataspatial_populate(context: Context, data_dict: DataDict):

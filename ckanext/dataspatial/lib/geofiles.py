@@ -15,6 +15,7 @@ from ckanext.dataspatial.lib.util import (
     DEFAULT_CONTEXT,
     WKT_FIELD_NAME,
 )
+from ckanext.dataspatial.types import StatusCallback
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ def load_geojson_to_datastore(
     resource_id: str,
     aliases: list[str] | str = None,
     indexes: list[str] = None,
+    status_callback: StatusCallback = lambda d: None,
 ):
     resource: dict = toolkit.get_action("resource_show")(
         DEFAULT_CONTEXT, {"id": resource_id}
@@ -80,7 +82,12 @@ def load_geojson_to_datastore(
 
     # create table in datastore
     logger.info(f"Creating datastore table for {resource_id}")
+    status_callback(f"Creating datastore table for {resource_id}")
     toolkit.get_action("datastore_create")({"user": "default"}, create_options)
 
     # now that this has a datastore table with a WKT field, run it through the common process
-    prepare_and_populate_geoms(resource, from_geojson_add=True)
+    prepare_and_populate_geoms(
+        resource,
+        from_geojson_add=True,
+        status_callback=status_callback,
+    )

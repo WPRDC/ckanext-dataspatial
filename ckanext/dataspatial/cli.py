@@ -8,8 +8,8 @@ from ckanext.dataspatial.lib.postgis import (
     create_postgis_columns,
     create_postgis_index,
     populate_postgis_columns,
-    GEOMETRY_TYPES,
 )
+from ckanext.dataspatial.types import GEOMETRY_TYPES
 
 log = logging.getLogger("ckan")
 

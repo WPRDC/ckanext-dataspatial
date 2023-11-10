@@ -24,20 +24,13 @@ from ckanext.dataspatial.lib.util import (
     DEFAULT_CONTEXT,
     WKT_FIELD_NAME,
 )
+from ckanext.dataspatial.types import StatusCallback
 
 logger = logging.getLogger(__name__)
 
 GEOM_FIELD = toolkit.config.get("postgis.field", "_geom")
 GEOM_MERCATOR_FIELD = toolkit.config.get("postgis.mercator_field", "_geom_webmercator")
 
-GEOMETRY_TYPES = {
-    "POINT",
-    "LINESTRING",
-    "POLYGON",
-    "MULTIPOINT",
-    "MULTILINESTRING",
-    "MULTIPOLYGON",
-}
 
 BATCH_SIZE = 5000
 
@@ -118,6 +111,7 @@ def populate_postgis_columns(
     lng_field: str = None,
     wkt_field: str = None,
     connection: Optional[Connection] = None,
+    status_callback: StatusCallback = lambda d: None,
 ):
     """Populate the PostGis columns from the give lat & long fields
 
@@ -127,13 +121,25 @@ def populate_postgis_columns(
     :param wkt_field: The Well-Known Text field to populate from
     :param connection: Database connection. If None, one will be
         created for this operation. (Default value = None)
+    :param status_callback: Callable that logs status to CKAN task table
     """
     if lat_field and lng_field:
+        status_callback("Populating geom columns using Latitude and Longitude.")
         _populate_columns_with_lat_lng(
-            resource_id, lat_field, lng_field, connection=connection
+            resource_id,
+            lat_field,
+            lng_field,
+            connection=connection,
+            status_callback=status_callback,
         )
     elif wkt_field:
-        _populate_columns_with_wkt(resource_id, wkt_field, connection=connection)
+        status_callback("Populating geom columns using Well-Known Text.")
+        _populate_columns_with_wkt(
+            resource_id,
+            wkt_field,
+            connection=connection,
+            status_callback=status_callback,
+        )
 
 
 def _populate_columns_with_lat_lng(
@@ -141,6 +147,7 @@ def _populate_columns_with_lat_lng(
     lat_field: str,
     lng_field: str,
     connection=None,
+    status_callback: StatusCallback = lambda d: None,
 ):
     source_sql = _get_rows_to_update_sql(
         resource_id, latitude_field=lat_field, longitude_field=lng_field
@@ -159,7 +166,11 @@ def _populate_columns_with_lat_lng(
              WHERE _id = %s
         """
     _populate_columns_in_batches(
-        source_sql, geom_update_sql, geom_webmercator_update_sql
+        source_sql,
+        geom_update_sql,
+        geom_webmercator_update_sql,
+        connection=connection,
+        status_callback=status_callback,
     )
 
 
@@ -167,6 +178,7 @@ def _populate_columns_with_wkt(
     resource_id: str,
     wkt_field: str = None,
     connection=None,
+    status_callback: StatusCallback = lambda d: None,
 ):
     source_sql = _get_rows_to_update_sql(resource_id, wkt_field=wkt_field)
     geom_update_sql = f"""
@@ -180,7 +192,11 @@ def _populate_columns_with_wkt(
         WHERE _id = %s
     """
     _populate_columns_in_batches(
-        source_sql, geom_update_sql, geom_webmercator_update_sql
+        source_sql,
+        geom_update_sql,
+        geom_webmercator_update_sql,
+        connection=connection,
+        status_callback=status_callback,
     )
 
 
@@ -192,7 +208,11 @@ def get_wkt_values(
         return get_field_values(c, resource_id, wkt_field)
 
 
-def prepare_and_populate_geoms(resource: dict, from_geojson_add: bool = False) -> None:
+def prepare_and_populate_geoms(
+    resource: dict,
+    from_geojson_add: bool = False,
+    status_callback: StatusCallback = lambda d: None,
+) -> None:
     """Adds geometric data fields, geometric indexes and then populates the geometric fields based
     on extant data and dataspatial metadata.
 
@@ -205,16 +225,22 @@ def prepare_and_populate_geoms(resource: dict, from_geojson_add: bool = False) -
     ):
         if not has_postgis_columns(resource["id"]):
             logger.info(f"Creating PostGIS columns for {resource['id']}.")
+            status_callback("creating columns")
             create_postgis_columns(resource["id"], "POINT")
+
         if not has_postgis_index(resource["id"]):
             logger.info(f"Creating PostGIS indexes for {resource['id']}.")
+            status_callback("indexing columns")
             create_postgis_index(resource["id"])
 
         logger.info(f"Populating PostGIS columns for {resource['id']}/")
+        status_callback("starting geom column population")
+
         populate_postgis_columns(
             resource["id"],
             lat_field=resource["dataspatial_latitude_field"],
             lng_field=resource["dataspatial_longitude_field"],
+            status_callback=status_callback,
         )
 
     elif from_geojson_add or resource["dataspatial_wkt_field"]:
@@ -276,6 +302,7 @@ def _populate_columns_in_batches(
     geom_update_sql: str,
     geom_webmercator_update_sql: str,
     connection=None,
+    status_callback: StatusCallback = lambda d: None,
 ):
     with get_connection(connection, write=True, raw=True) as c:
         read_cursor = c.cursor()
@@ -301,7 +328,7 @@ def _populate_columns_in_batches(
             c.commit()
 
             logger.info(f"{count} rows geocoded.")
-
+            status_callback(f"{count} rows geocoded.")
         c.commit()
 
 
@@ -350,7 +377,7 @@ def query_extent(data_dict: DataDict, connection: Optional[Connection] = None):
     )
 
     if not is_single_statement(query):
-        raise datastore_db.ValidationError(
+        raise datastore_db.DatastoreException(
             {"query": ["Query is not a single statement."]}
         )
 
