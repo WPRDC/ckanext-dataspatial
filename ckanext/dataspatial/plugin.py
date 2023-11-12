@@ -6,18 +6,19 @@ from ckan.plugins import SingletonPlugin, implements, interfaces, toolkit
 from ckan.types import Schema
 
 from ckanext.dataspatial import cli, views
-from ckanext.dataspatial.config import config
-from ckanext.dataspatial.listeners import new_resource_listener
 from ckanext.dataspatial.actions import (
     dataspatial_populate,
     dataspatial_submit,
     dataspatial_hook,
+    dataspatial_status,
 )
-from ckanext.dataspatial.search import datastore_query_extent
+from ckanext.dataspatial.config import config
+from ckanext.dataspatial.helpers import dataspatial_status_description
 from ckanext.dataspatial.schema import (
     dataspatial_modify_resource_schema,
     dataspatial_show_resource_schema,
 )
+from ckanext.dataspatial.search import datastore_query_extent
 from ckanext.dataspatial.validators import json_object_list
 
 
@@ -31,6 +32,7 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
     implements(interfaces.IDatasetForm)
     implements(interfaces.IConfigurer)
     implements(interfaces.IBlueprint)
+    implements(interfaces.ITemplateHelpers)
 
     # IValidators
     def get_validators(self):
@@ -103,9 +105,10 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
         """ """
         return {
             "dataspatial_submit": dataspatial_submit,
+            "dataspatial_hook": dataspatial_hook,
+            "dataspatial_status": dataspatial_status,
             "populate_geom_columns": dataspatial_populate,
             "datastore_query_extent": datastore_query_extent,
-            "dataspatial_hook": dataspatial_hook,
         }
 
     # IClick
@@ -116,3 +119,7 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
 
     def get_blueprint(self):
         return views.get_blueprints()
+
+    # ITemplateHelpers
+    def get_helpers(self):
+        return {"dataspatial_status_description": dataspatial_status_description}

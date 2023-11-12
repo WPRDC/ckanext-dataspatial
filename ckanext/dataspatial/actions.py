@@ -2,6 +2,7 @@
 import datetime
 import json
 import logging
+from typing import TypedDict
 
 import ckan.lib.jobs as rq_jobs
 from ckan.plugins import toolkit
@@ -12,7 +13,7 @@ from dateutil.parser import parse as parse_date
 from ckanext.dataspatial import jobs
 from ckanext.dataspatial.jobs import JOB_TYPE
 from ckanext.dataspatial.lib.postgis import prepare_and_populate_geoms
-from ckanext.dataspatial.types import JOB_COMPLETION_STATUS
+from ckanext.dataspatial.types import GeoreferenceStatus, StatusResult
 
 enqueue_job = toolkit.enqueue_job
 get_queue = rq_jobs.get_queue
@@ -26,7 +27,7 @@ TASK_TYPE = "dataspatial"
 TASK_KEY = "dataspatial"
 
 
-def dataspatial_submit(context: Context, data_dict: DataDict):
+def dataspatial_submit(context: Context, data_dict: DataDict) -> bool:
     """Submit a job to be georeferenced.
 
     Returns `True` if the job has been submitted and `False` if the job
@@ -54,12 +55,12 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
     # check if is a job is already running properly for this resource
     extant_task_id = None
     try:
-        existing_task = toolkit.get_action("task_status_show")(
+        extant_task = toolkit.get_action("task_status_show")(
             context,
             {
                 "entity_id": resource_id,
-                "task_type": "dataspatial",
-                "key": "dataspatial",
+                "task_type": TASK_TYPE,
+                "key": TASK_KEY,
             },
         )
 
@@ -67,7 +68,7 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
         # todo: add config options
         assume_task_stale_after = datetime.timedelta(seconds=3600)
         assume_task_stillborn_after = datetime.timedelta(seconds=5)
-        if existing_task.get("state") == "pending":
+        if extant_task.get("state") == GeoreferenceStatus.PENDING:
             import re  # here because it takes a moment to load
 
             queued_res_ids = [
@@ -75,7 +76,7 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
                 for job in get_queue().get_jobs()
                 if JOB_TYPE in str(job)
             ]
-            updated = parse_iso_date(existing_task["last_updated"])
+            updated = parse_iso_date(extant_task["last_updated"])
             time_since_last_updated = datetime.datetime.utcnow() - updated
 
             if (
@@ -83,23 +84,23 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
                 and time_since_last_updated > assume_task_stillborn_after
             ):
                 logger.info(
-                    f"A pending task was found ({existing_task['id']}), "
+                    f"A pending task was found ({extant_task['id']}), "
                     f"but its not found in the queue ({queued_res_ids}) "
                     f"and is {time_since_last_updated} hours old",
                 )
             elif time_since_last_updated > assume_task_stale_after:
                 logger.info(
-                    f"A pending task was found {existing_task['id']}, "
+                    f"A pending task was found {extant_task['id']}, "
                     f"but it is {time_since_last_updated} hours old",
                 )
             else:
                 logger.info(
-                    f"A healthy pending task was found {existing_task['id']} for this resource, "
+                    f"A healthy pending task was found {extant_task['id']} for this resource, "
                     f"so skipping this duplicate task"
                 )
                 return False
 
-        extant_task_id = existing_task["id"]
+        extant_task_id = extant_task["id"]
     except toolkit.ObjectNotFound:
         pass
 
@@ -112,7 +113,7 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
         "state": "submitting",
         "key": TASK_KEY,
         "value": "{}",
-        "error": "{}",
+        "error": None,
     }
     if extant_task_id:
         task["id"] = extant_task_id
@@ -137,7 +138,7 @@ def dataspatial_submit(context: Context, data_dict: DataDict):
 
     # update task status
     task["value"] = json.dumps({"job_id": job.id})
-    task["state"] = "pending"
+    task["state"] = GeoreferenceStatus.SUBMITTING.value
     task["last_updated"] = str(datetime.datetime.utcnow())
     toolkit.get_action("task_status_update")(
         {"session": model.meta.create_local_session(), "ignore_auth": True}, task
@@ -154,6 +155,7 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
       - resource_id: The ID of the resource the job is working on.
       - status: The current status of the job.
       - job_created: ISO str of datetime when job was created.
+      - value: Dict with data to store in value field
     """
     # todo: figure out what we need passed in data_dict
     #   - status, task_created, error (optional),
@@ -168,7 +170,7 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
 
     resubmit = False
 
-    if status == JOB_COMPLETION_STATUS:
+    if status == GeoreferenceStatus.COMPLETE:
         resource_dict = toolkit.get_action("resource_show")(
             context, {"id": resource_id}
         )
@@ -188,10 +190,20 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
             except ValueError:
                 pass
 
+    error = data_dict.get("error")
+    saved_value = json.loads(task["value"])
+    value = data_dict.get("value", {})
+
+    logger.info("🔴⚪️🔵")
+    logger.info(saved_value)
+    logger.info(value)
+
     # update task status
-    task["state"] = status
+    task["state"] = status.value
     task["last_updated"] = str(datetime.datetime.utcnow())
-    task["error"] = data_dict.get("error")
+    task["error"] = error
+    task["value"] = json.dumps({**saved_value, **value})
+    logger.info(task["value"])
     context["ignore_auth"] = True
     toolkit.get_action("task_status_update")(context, task)
 
@@ -203,6 +215,33 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
             f"Resource {resource_id} has been modified. Resubmitting for georeferencing."
         )
         toolkit.get_action("dataspatial_submit")(context, {"resource_id": resource_id})
+
+
+def dataspatial_status(context: Context, data_dict: DataDict) -> StatusResult:
+    resource_id = toolkit.get_or_bust(data_dict, "resource_id")
+    task = toolkit.get_action("task_status_show")(
+        context,
+        {
+            "entity_id": resource_id,
+            "task_type": TASK_TYPE,
+            "key": TASK_KEY,
+        },
+    )
+
+    status = task.get("state", "UNKNOWN")
+    last_updated = task.get("last_updated")
+    value: dict = json.loads(task.get("value", {}))
+    job_id: str = value.get("job_id")
+    rows_completed = value.get("rows_completed")
+    notes = value.get("notes")
+
+    return {
+        "job_id": job_id,
+        "status": status,
+        "rows_completed": rows_completed,
+        "notes": notes,
+        "last_updated": last_updated,
+    }
 
 
 def dataspatial_populate(context: Context, data_dict: DataDict):

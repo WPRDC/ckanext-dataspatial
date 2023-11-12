@@ -9,7 +9,6 @@
         {{ form.info(_('If Latitude & Longitude fields are OR WKT field is provided, the resource will be geocoded.')) }}
         <br/>
 
-
         <div class="row row-cols-2">
             {% call form.input('dataspatial_longitude_field', label=_('Longitude (x) field name'), id='field-dataspatial_longitude_field', placeholder='longitude', value=data.dataspatial_longitude_field, error=errors.dataspatial_longitude_field) %}
                 {{ form.info(_('Required with "Latitude Field" to make datastore resource spatially aware, unless "WKT Field" is provided.') ) }}
@@ -20,11 +19,9 @@
             {% endcall %}
         </div>
 
-
         {% call form.input('dataspatial_wkt_field', label=_('WKT field name'), id='field-dataspatial_wkt_field', placeholder='wkt', value=data.dataspatial_wkt_field, error=errors.dataspatial_wkt_field) %}
             {{ form.info(_('Required to make datastore resource spatially aware, unless "Longitude Field" and "Latitude Field" are provided.') ) }}
         {% endcall %}
-
 
         {% call form.input('dataspatial_geom_resource', label=_('Dataspatial Geometry Resource'), id='field-dataspatial_geom_resource', placeholder='', value=data.dataspatial_geom_resource, error=errors.dataspatial_geom_resource) %}
             {{ form.info(_('Must be a valid resource ID. ID of the resource that provides geometries for this resource.') ) }}

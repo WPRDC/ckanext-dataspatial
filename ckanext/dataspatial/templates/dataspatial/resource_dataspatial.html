@@ -4,14 +4,47 @@
 
 {% block primary_content_inner %}
 
-  {% set action = h.url_for('dataspatial.resource_dataspatial', id=pkg.name, resource_id=res.id) %}
-  {% set show_table = true %}
+    {% set action = h.url_for('dataspatial.resource_dataspatial', id=pkg.name, resource_id=res.id) %}
 
-  <form method="post" action="{{ action }}" class="datapusher-form">
-    {{ h.csrf_input() }} 
-    <button class="btn btn-primary" name="save" type="submit">
-      <i class="fa fa-cloud-upload"></i> {{ _('Georeference Dataset') }}
-    </button>
-  </form>
+
+    <form method="post" action="{{ action }}" class="datapusher-form">
+        {{ h.csrf_input() }}
+        <button class="btn btn-primary" name="save" type="submit">
+            <i class="fa fa-gears"></i> {{ _('Georeference Resource') }}
+        </button>
+    </form>
+
+    <table class="table table-bordered">
+        <colgroup>
+            <col width="150">
+            <col>
+        </colgroup>
+        <tr>
+            <th>{{ _('Status') }}</th>
+            <td>{{ h.dataspatial_status_description(status) }}</td>
+        </tr>
+        <tr>
+            <th>{{ _('Last updated') }}</th>
+            {% if status.last_updated %}
+                <td><span class="date"
+                          title="{{ h.render_datetime(status.last_updated, with_hours=True) }}">{{ h.time_ago_from_timestamp(status.last_updated) }}</span>
+                </td>
+            {% else %}
+                <td>{{ _('Never') }}</td>
+            {% endif %}
+        </tr>
+        <tr>
+            <th>{{ _('Notes') }}</th>
+            <td>
+                {% if status.notes %}
+                    {{ _(status.notes) }}
+                {% endif %}
+                {% if status.rows_completed %}
+                    {{ status.rows_completed }} {{ _("records completed.") }}
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+
 
 {% endblock %}

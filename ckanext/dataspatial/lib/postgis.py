@@ -24,7 +24,11 @@ from ckanext.dataspatial.lib.util import (
     DEFAULT_CONTEXT,
     WKT_FIELD_NAME,
 )
-from ckanext.dataspatial.types import StatusCallback
+from ckanext.dataspatial.types import (
+    StatusCallback,
+    SpecificStatusCallback,
+    GeoreferenceStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +115,7 @@ def populate_postgis_columns(
     lng_field: str = None,
     wkt_field: str = None,
     connection: Optional[Connection] = None,
-    status_callback: StatusCallback = lambda d: None,
+    status_callback: StatusCallback = lambda s, v, e: None,
 ):
     """Populate the PostGis columns from the give lat & long fields
 
@@ -124,7 +128,6 @@ def populate_postgis_columns(
     :param status_callback: Callable that logs status to CKAN task table
     """
     if lat_field and lng_field:
-        status_callback("Populating geom columns using Latitude and Longitude.")
         _populate_columns_with_lat_lng(
             resource_id,
             lat_field,
@@ -133,7 +136,6 @@ def populate_postgis_columns(
             status_callback=status_callback,
         )
     elif wkt_field:
-        status_callback("Populating geom columns using Well-Known Text.")
         _populate_columns_with_wkt(
             resource_id,
             wkt_field,
@@ -147,8 +149,17 @@ def _populate_columns_with_lat_lng(
     lat_field: str,
     lng_field: str,
     connection=None,
-    status_callback: StatusCallback = lambda d: None,
+    status_callback: StatusCallback = lambda s, v, e: None,
 ):
+    def _status_callback(value):
+        status_callback(
+            GeoreferenceStatus.WORKING,
+            value={
+                "notes": "Populating geom columns using Latitude and Longitude.",
+                **value,
+            },
+        )
+
     source_sql = _get_rows_to_update_sql(
         resource_id, latitude_field=lat_field, longitude_field=lng_field
     )
@@ -165,12 +176,13 @@ def _populate_columns_with_lat_lng(
             WHERE {GEOM_FIELD} IS NOT NULL
              WHERE _id = %s
         """
+
     _populate_columns_in_batches(
         source_sql,
         geom_update_sql,
         geom_webmercator_update_sql,
         connection=connection,
-        status_callback=status_callback,
+        status_callback=_status_callback,
     )
 
 
@@ -178,8 +190,17 @@ def _populate_columns_with_wkt(
     resource_id: str,
     wkt_field: str = None,
     connection=None,
-    status_callback: StatusCallback = lambda d: None,
+    status_callback: StatusCallback = lambda s, v, e: None,
 ):
+    def _status_callback(value):
+        status_callback(
+            GeoreferenceStatus.WORKING,
+            value={
+                "notes": "Populating geom columns using Well-Known Text.",
+                **value,
+            },
+        )
+
     source_sql = _get_rows_to_update_sql(resource_id, wkt_field=wkt_field)
     geom_update_sql = f"""
         UPDATE "{resource_id}"
@@ -196,7 +217,7 @@ def _populate_columns_with_wkt(
         geom_update_sql,
         geom_webmercator_update_sql,
         connection=connection,
-        status_callback=status_callback,
+        status_callback=_status_callback,
     )
 
 
@@ -211,7 +232,7 @@ def get_wkt_values(
 def prepare_and_populate_geoms(
     resource: dict,
     from_geojson_add: bool = False,
-    status_callback: StatusCallback = lambda d: None,
+    status_callback: StatusCallback = lambda s, v, e: None,
 ) -> None:
     """Adds geometric data fields, geometric indexes and then populates the geometric fields based
     on extant data and dataspatial metadata.
@@ -225,16 +246,20 @@ def prepare_and_populate_geoms(
     ):
         if not has_postgis_columns(resource["id"]):
             logger.info(f"Creating PostGIS columns for {resource['id']}.")
-            status_callback("creating columns")
+            status_callback(
+                GeoreferenceStatus.WORKING, value={"notes": "Creating Columns"}
+            )
             create_postgis_columns(resource["id"], "POINT")
 
         if not has_postgis_index(resource["id"]):
             logger.info(f"Creating PostGIS indexes for {resource['id']}.")
-            status_callback("indexing columns")
+            status_callback(
+                GeoreferenceStatus.WORKING,
+                value={"notes": "Indexing Geom Columns"},
+            )
             create_postgis_index(resource["id"])
 
         logger.info(f"Populating PostGIS columns for {resource['id']}/")
-        status_callback("starting geom column population")
 
         populate_postgis_columns(
             resource["id"],
@@ -260,7 +285,11 @@ def prepare_and_populate_geoms(
             logger.info(f"Creating PostGIS indexes for {resource['id']}.")
             create_postgis_index(resource["id"])
         logger.info(f"Populating PostGIS columns for {resource['id']}.")
-        populate_postgis_columns(resource["id"], wkt_field=wkt_field_name)
+        populate_postgis_columns(
+            resource["id"],
+            wkt_field=wkt_field_name,
+            status_callback=status_callback,
+        )
 
     toolkit.get_action("resource_patch")(
         DEFAULT_CONTEXT,
@@ -302,7 +331,7 @@ def _populate_columns_in_batches(
     geom_update_sql: str,
     geom_webmercator_update_sql: str,
     connection=None,
-    status_callback: StatusCallback = lambda d: None,
+    status_callback: SpecificStatusCallback = lambda d: None,
 ):
     with get_connection(connection, write=True, raw=True) as c:
         read_cursor = c.cursor()
@@ -328,7 +357,7 @@ def _populate_columns_in_batches(
             c.commit()
 
             logger.info(f"{count} rows geocoded.")
-            status_callback(f"{count} rows geocoded.")
+            status_callback({"rows_completed": count})
         c.commit()
 
 
