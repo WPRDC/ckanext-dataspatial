@@ -194,10 +194,6 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
     saved_value = json.loads(task["value"])
     value = data_dict.get("value", {})
 
-    logger.info("🔴⚪️🔵")
-    logger.info(saved_value)
-    logger.info(value)
-
     # update task status
     task["state"] = status.value
     task["last_updated"] = str(datetime.datetime.utcnow())
