@@ -11,6 +11,7 @@ def dataspatial_status_description(status: dict) -> str:
             GeoreferenceStatus.PENDING.value: _("Pending"),
             GeoreferenceStatus.SUBMITTING.value: _("Submitting"),
             GeoreferenceStatus.ERROR.value: _("Error"),
+            GeoreferenceStatus.NOT_STARTED.value: _("Not georeferenced"),
         }
 
         return captions.get(status["status"], _(status["status"]))

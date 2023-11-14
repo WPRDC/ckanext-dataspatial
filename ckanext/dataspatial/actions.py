@@ -5,6 +5,7 @@ import logging
 from typing import TypedDict
 
 import ckan.lib.jobs as rq_jobs
+from ckan.logic import NotFound
 from ckan.plugins import toolkit
 from ckan.types import Context, DataDict
 from dateutil.parser import isoparse as parse_iso_date
@@ -215,29 +216,34 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
 
 def dataspatial_status(context: Context, data_dict: DataDict) -> StatusResult:
     resource_id = toolkit.get_or_bust(data_dict, "resource_id")
-    task = toolkit.get_action("task_status_show")(
-        context,
-        {
-            "entity_id": resource_id,
-            "task_type": TASK_TYPE,
-            "key": TASK_KEY,
-        },
-    )
+    try:
+        task = toolkit.get_action("task_status_show")(
+            context,
+            {
+                "entity_id": resource_id,
+                "task_type": TASK_TYPE,
+                "key": TASK_KEY,
+            },
+        )
 
-    status = task.get("state", "UNKNOWN")
-    last_updated = task.get("last_updated")
-    value: dict = json.loads(task.get("value", {}))
-    job_id: str = value.get("job_id")
-    rows_completed = value.get("rows_completed")
-    notes = value.get("notes")
+        status = task.get("state", "UNKNOWN")
+        last_updated = task.get("last_updated")
+        value: dict = json.loads(task.get("value", {}))
+        job_id: str = value.get("job_id")
+        rows_completed = value.get("rows_completed")
+        notes = value.get("notes")
 
-    return {
-        "job_id": job_id,
-        "status": status,
-        "rows_completed": rows_completed,
-        "notes": notes,
-        "last_updated": last_updated,
-    }
+        return {
+            "job_id": job_id,
+            "status": status,
+            "rows_completed": rows_completed,
+            "notes": notes,
+            "last_updated": last_updated,
+        }
+    except NotFound:
+        return {
+            "status": GeoreferenceStatus.NOT_STARTED.value,
+        }
 
 
 def dataspatial_populate(context: Context, data_dict: DataDict):

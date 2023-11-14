@@ -1,6 +1,6 @@
 # encoding: utf-8
 # Types and Constants used throughout extension.
-from typing import Callable, TypedDict, Optional
+from typing import Callable, TypedDict, Optional, Literal
 from enum import Enum
 
 GEOMETRY_TYPES = {
@@ -14,6 +14,7 @@ GEOMETRY_TYPES = {
 
 
 class GeoreferenceStatus(Enum):
+    NOT_STARTED = "NOT_STARTED"
     COMPLETE = "COMPLETE"
     WORKING = "WORKING"
     PENDING = "PENDING"
@@ -34,9 +35,12 @@ class HookDataDict(TypedDict):
     error: str | None
 
 
-class StatusResult(TypedDict):
+class StatusDict(TypedDict):
     job_id: str
     status: str
     last_updated: str
     rows_completed: int | None
     notes: str | None
+
+
+StatusResult = StatusDict | dict[Literal["status"] : str]
