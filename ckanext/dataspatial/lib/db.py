@@ -1,6 +1,6 @@
 # encoding: utf-8
 from contextlib import contextmanager
-from typing import Optional, Generator, Iterable
+from typing import Optional, Generator, Iterable, Union
 
 from ckan.plugins import PluginImplementations, toolkit
 from ckanext.datastore.interfaces import IDatastore
@@ -91,7 +91,7 @@ def create_index(
     index_name: str = _index_name(table, field, index_type)
     s: TextClause = text(
         f"""
-      CREATE INDEX "{index_name}"
+      CREATE INDEX IF NOT EXISTS "{index_name}"
           ON "{table}"
        USING {index_type}("{field}")
        WHERE "{field}" IS NOT NULL;
@@ -152,19 +152,19 @@ def create_geom_column(
     connection: Connection,
     table: str,
     field: str,
-    srid: str | int,
     geom_type: str,
+    srid: Union[str, int],
 ) -> None:
     """Create a geospatial column on the given table
 
     :param connection: The database connection
     :param table: The table to create column on
-    :param field: The name of the geom column
+    :param field: The name of the geom column to be created
     :param srid: The projection of the geom column
     :param geom_type: The type of geometry column to add.
     """
-    query: Select = sql.select(
-        [sql.func.AddGeometryColumn("public", table, field, srid, geom_type, 2)]
+    query: TextClause = sql.text(
+        f"""ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "{field}" geometry({geom_type}, {srid});"""
     )
     connection.execute(query)
 

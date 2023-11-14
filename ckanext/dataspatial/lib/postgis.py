@@ -89,8 +89,8 @@ def create_postgis_columns(
     """
     c: Connection
     with get_connection(connection, write=True) as c:
-        create_geom_column(c, resource_id, GEOM_FIELD, 4326, geom_type)
-        create_geom_column(c, resource_id, GEOM_MERCATOR_FIELD, 3857, geom_type)
+        create_geom_column(c, resource_id, GEOM_FIELD, geom_type, 4326)
+        create_geom_column(c, resource_id, GEOM_MERCATOR_FIELD, geom_type, 3857)
 
 
 def create_postgis_index(resource_id: str, connection: Optional[Connection] = None):
@@ -166,15 +166,13 @@ def _populate_columns_with_lat_lng(
     geom_update_sql = f"""
             UPDATE "{resource_id}"
             SET "{GEOM_FIELD}" = st_setsrid(st_makepoint("{lng_field}"::float8, "{lat_field}"::float8), 4326)
-            WHERE "{lat_field}" IS NOT NULL AND "{lng_field}" IS NOT NULL
             WHERE _id = %s
-
          """
     geom_webmercator_update_sql = f"""
             UPDATE "{resource_id}" 
             SET "{GEOM_MERCATOR_FIELD}" = st_transform("{GEOM_FIELD}", 3857)
-            WHERE {GEOM_FIELD} IS NOT NULL
-             WHERE _id = %s
+            WHERE {GEOM_FIELD} IS NOT NULL 
+              AND _id = %s
         """
 
     _populate_columns_in_batches(
@@ -210,7 +208,8 @@ def _populate_columns_with_wkt(
     geom_webmercator_update_sql = f"""
         UPDATE "{resource_id}"
         SET "{GEOM_MERCATOR_FIELD}" = st_transform("{GEOM_FIELD}", 3857)
-        WHERE _id = %s
+        WHERE "{GEOM_FIELD}" IS NOT NULL 
+          AND _id = %s
     """
     _populate_columns_in_batches(
         source_sql,

@@ -9,6 +9,7 @@ def dataspatial_status_description(status: dict) -> str:
         captions = {
             GeoreferenceStatus.COMPLETE.value: _("Complete"),
             GeoreferenceStatus.PENDING.value: _("Pending"),
+            GeoreferenceStatus.WORKING.value: _("Working"),
             GeoreferenceStatus.SUBMITTING.value: _("Submitting"),
             GeoreferenceStatus.ERROR.value: _("Error"),
             GeoreferenceStatus.NOT_STARTED.value: _("Not georeferenced"),
