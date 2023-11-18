@@ -231,7 +231,7 @@ def get_wkt_values(
 def prepare_and_populate_geoms(
     resource: dict,
     from_geojson_add: bool = False,
-    status_callback: StatusCallback = lambda s, v, e: None,
+    status_callback: StatusCallback = lambda status, value, error: None,
 ) -> None:
     """Adds geometric data fields, geometric indexes and then populates the geometric fields based
     on extant data and dataspatial metadata.
@@ -239,66 +239,71 @@ def prepare_and_populate_geoms(
     :param resource: CKAN Resource dict
     :param from_geojson_add: True if going from creation of new geojson file.
     """
-    if (
-        resource["dataspatial_latitude_field"]
-        and resource["dataspatial_longitude_field"]
-    ):
-        if not has_postgis_columns(resource["id"]):
-            logger.info(f"Creating PostGIS columns for {resource['id']}.")
-            status_callback(
-                GeoreferenceStatus.WORKING, value={"notes": "Creating Columns"}
+    try:
+        if (
+            resource["dataspatial_latitude_field"]
+            and resource["dataspatial_longitude_field"]
+        ):
+            if not has_postgis_columns(resource["id"]):
+                logger.info(f"Creating PostGIS columns for {resource['id']}.")
+                status_callback(
+                    GeoreferenceStatus.WORKING, value={"notes": "Creating Columns"}
+                )
+                create_postgis_columns(resource["id"], "POINT")
+
+            if not has_postgis_index(resource["id"]):
+                logger.info(f"Creating PostGIS indexes for {resource['id']}.")
+                status_callback(
+                    GeoreferenceStatus.WORKING,
+                    value={"notes": "Indexing Geom Columns"},
+                )
+                create_postgis_index(resource["id"])
+
+            logger.info(f"Populating PostGIS columns for {resource['id']}/")
+
+            populate_postgis_columns(
+                resource["id"],
+                lat_field=resource["dataspatial_latitude_field"],
+                lng_field=resource["dataspatial_longitude_field"],
+                status_callback=status_callback,
             )
-            create_postgis_columns(resource["id"], "POINT")
 
-        if not has_postgis_index(resource["id"]):
-            logger.info(f"Creating PostGIS indexes for {resource['id']}.")
-            status_callback(
-                GeoreferenceStatus.WORKING,
-                value={"notes": "Indexing Geom Columns"},
+        elif from_geojson_add or resource["dataspatial_wkt_field"]:
+            wkt_field_name = (
+                WKT_FIELD_NAME
+                if from_geojson_add
+                else resource["dataspatial_wkt_field"]
             )
-            create_postgis_index(resource["id"])
+            wkt_values = get_wkt_values(
+                resource["id"],
+                wkt_field_name,
+            )
+            geo_type = get_common_geom_type(wkt_values)
 
-        logger.info(f"Populating PostGIS columns for {resource['id']}/")
+            if not has_postgis_columns(resource["id"]):
+                logger.info(f"Creating PostGIS columns for {resource['id']}.")
+                create_postgis_columns(resource["id"], geo_type)
+            if not has_postgis_index(resource["id"]):
+                logger.info(f"Creating PostGIS indexes for {resource['id']}.")
+                create_postgis_index(resource["id"])
+            logger.info(f"Populating PostGIS columns for {resource['id']}.")
+            populate_postgis_columns(
+                resource["id"],
+                wkt_field=wkt_field_name,
+                status_callback=status_callback,
+            )
 
-        populate_postgis_columns(
-            resource["id"],
-            lat_field=resource["dataspatial_latitude_field"],
-            lng_field=resource["dataspatial_longitude_field"],
-            status_callback=status_callback,
+        toolkit.get_action("resource_patch")(
+            DEFAULT_CONTEXT,
+            {
+                "id": resource["id"],
+                "dataspatial_last_geom_updated": datetime.datetime.now().isoformat(),
+                "dataspatial_active": True,
+            },
         )
-
-    elif from_geojson_add or resource["dataspatial_wkt_field"]:
-        wkt_field_name = (
-            WKT_FIELD_NAME if from_geojson_add else resource["dataspatial_wkt_field"]
-        )
-        wkt_values = get_wkt_values(
-            resource["id"],
-            wkt_field_name,
-        )
-        geo_type = get_common_geom_type(wkt_values)
-
-        if not has_postgis_columns(resource["id"]):
-            logger.info(f"Creating PostGIS columns for {resource['id']}.")
-            create_postgis_columns(resource["id"], geo_type)
-        if not has_postgis_index(resource["id"]):
-            logger.info(f"Creating PostGIS indexes for {resource['id']}.")
-            create_postgis_index(resource["id"])
-        logger.info(f"Populating PostGIS columns for {resource['id']}.")
-        populate_postgis_columns(
-            resource["id"],
-            wkt_field=wkt_field_name,
-            status_callback=status_callback,
-        )
-
-    toolkit.get_action("resource_patch")(
-        DEFAULT_CONTEXT,
-        {
-            "id": resource["id"],
-            "dataspatial_last_geom_updated": datetime.datetime.now().isoformat(),
-            "dataspatial_active": True,
-        },
-    )
-    logger.info(f"Geometry columns for {resource['id']} populated.")
+        logger.info(f"Geometry columns for {resource['id']} populated.")
+    except Exception as e:
+        status_callback(GeoreferenceStatus.ERROR, error=str(e))
 
 
 def _get_rows_to_update_sql(

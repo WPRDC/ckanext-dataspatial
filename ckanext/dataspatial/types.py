@@ -1,7 +1,7 @@
 # encoding: utf-8
 # Types and Constants used throughout extension.
-from typing import Callable, TypedDict, Optional, Literal
 from enum import Enum
+from typing import Callable, TypedDict, Literal, Union
 
 GEOMETRY_TYPES = {
     "POINT",
@@ -22,25 +22,25 @@ class GeoreferenceStatus(Enum):
     ERROR = "ERROR"
 
 
-StatusCallback = Callable[[str, str | None, str | None], None]
+StatusCallback = Callable[[str, Union[str, None], Union[str, None]], None]
 
-SpecificStatusCallback = Callable[[str | None, str | None], None]
+SpecificStatusCallback = Callable[[Union[str, None], Union[str, None]], None]
 
 
 class HookDataDict(TypedDict):
     resource_id: str
     status: str
     job_created: str
-    value: dict | None
-    error: str | None
+    value: Union[dict, None]
+    error: Union[str, None]
 
 
 class StatusDict(TypedDict):
     job_id: str
     status: str
     last_updated: str
-    rows_completed: int | None
-    notes: str | None
+    rows_completed: Union[int, None]
+    notes: Union[str, None]
 
 
 StatusResult = StatusDict | dict[Literal["status"] : str]
