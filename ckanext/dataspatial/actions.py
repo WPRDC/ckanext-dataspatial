@@ -2,7 +2,6 @@
 import datetime
 import json
 import logging
-from typing import TypedDict
 
 import ckan.lib.jobs as rq_jobs
 from ckan.logic import NotFound

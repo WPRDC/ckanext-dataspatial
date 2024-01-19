@@ -1,8 +1,5 @@
-from typing import cast
-
-from ckan.types import Schema
-
 from ckan.plugins.toolkit import get_validator, get_converter
+from ckan.types import Schema
 
 from ckanext.dataspatial.validators import json_object_list
 

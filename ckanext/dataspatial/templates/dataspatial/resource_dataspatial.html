@@ -6,7 +6,6 @@
 
     {% set action = h.url_for('dataspatial.resource_dataspatial', id=pkg.name, resource_id=res.id) %}
 
-
     <form method="post" action="{{ action }}" class="datapusher-form">
         {{ h.csrf_input() }}
         <button class="btn btn-primary" name="save" type="submit">
