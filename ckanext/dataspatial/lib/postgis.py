@@ -21,7 +21,7 @@ from ckanext.dataspatial.lib.db import (
 )
 from ckanext.dataspatial.lib.util import (
     DEFAULT_CONTEXT,
-    WKT_FIELD_NAME,
+    WKT_FIELD_NAME, get_common_geom_type,
 )
 from ckanext.dataspatial.types import (
     StatusCallback,
@@ -239,8 +239,8 @@ def prepare_and_populate_geoms(
     :param from_geojson_add: True if going from creation of new geojson file.
     """
     if (
-        resource["dataspatial_latitude_field"]
-        and resource["dataspatial_longitude_field"]
+        resource.get("dataspatial_latitude_field")
+        and resource.get("dataspatial_longitude_field")
     ):
         if not has_postgis_columns(resource["id"]):
             logger.info(f"Creating PostGIS columns for {resource['id']}.")
@@ -276,11 +276,11 @@ def prepare_and_populate_geoms(
             resource["id"],
             wkt_field_name,
         )
-        geo_type = get_coxmmon_geom_type(wkt_values)
+        geo_type = get_common_geom_type(wkt_values)
 
         if not has_postgis_columns(resource["id"]):
             logger.info(f"Creating PostGIS columns for {resource['id']}.")
-            x(resource["id"], geo_type)
+            create_postgis_columns(resource["id"], geo_type)
         if not has_postgis_index(resource["id"]):
             logger.info(f"Creating PostGIS indexes for {resource['id']}.")
             create_postgis_index(resource["id"])
