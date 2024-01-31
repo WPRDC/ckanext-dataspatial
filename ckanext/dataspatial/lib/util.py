@@ -8,8 +8,6 @@ STORAGE_PATH = Path(toolkit.config.get("ckan.storage_path"))
 
 DEFAULT_CONTEXT = {"user": "default"}
 
-WKT_FIELD_NAME = "dataspatial_wkt"
-
 
 def get_common_geom_type(wkt_values: list[str]) -> str:
     """Finds the cdommon geometry type from a list of WKT geometries.

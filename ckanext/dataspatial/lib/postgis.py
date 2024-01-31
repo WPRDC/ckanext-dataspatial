@@ -9,6 +9,7 @@ from ckanext.datastore import backend as datastore_db
 from ckanext.datastore.helpers import is_single_statement
 
 from ckanext.dataspatial.config import config
+from ckanext.dataspatial.lib.constants import WKT_FIELD_NAME
 from ckanext.dataspatial.lib.db import (
     create_geom_column,
     create_index,
@@ -21,7 +22,6 @@ from ckanext.dataspatial.lib.db import (
 )
 from ckanext.dataspatial.lib.util import (
     DEFAULT_CONTEXT,
-    WKT_FIELD_NAME,
     get_common_geom_type,
 )
 from ckanext.dataspatial.types import (

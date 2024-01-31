@@ -7,13 +7,13 @@ from ckan.logic import NotFound
 from ckan.plugins import toolkit
 from geomet import wkt
 
+from ckanext.dataspatial.lib.constants import WKT_FIELD_NAME
 from ckanext.dataspatial.lib.postgis import (
     prepare_and_populate_geoms,
 )
 from ckanext.dataspatial.lib.util import (
     get_resource_file_path,
     DEFAULT_CONTEXT,
-    WKT_FIELD_NAME,
 )
 from ckanext.dataspatial.types import StatusCallback, GeoreferenceStatus
 
@@ -29,12 +29,12 @@ def geojson2wkt(geojson: dict) -> str | None:
 
 
 def load_geojson_to_datastore(
-        resource_id: str,
-        aliases: Union[list[str], str] = None,
-        indexes: list[str] = None,
-        status_callback: StatusCallback = lambda d: None,
+    resource_id: str,
+    aliases: Union[list[str], str] = None,
+    indexes: list[str] = None,
+    status_callback: StatusCallback = lambda d: None,
 ):
-    """ Converts geojson to tabular format and loads in to the datastore """
+    """Converts geojson to tabular format and loads in to the datastore"""
     resource: dict = toolkit.get_action("resource_show")(
         DEFAULT_CONTEXT, {"id": resource_id}
     )
@@ -50,7 +50,8 @@ def load_geojson_to_datastore(
 
     rows: list[dict[str, Any]] = [
         {**row["properties"], WKT_FIELD_NAME: geojson2wkt(row["geometry"])}
-        for row in geojson["features"] if row["geometry"]
+        for row in geojson["features"]
+        if row["geometry"]
     ]
 
     # get datastore_create options
@@ -61,8 +62,8 @@ def load_geojson_to_datastore(
 
     # ensure metadata lists the correct WKT field name
     if (
-            not resource.get("dataspatial_wkt_field", False)
-            or resource["dataspatial_wkt_field"] != WKT_FIELD_NAME
+        not resource.get("dataspatial_wkt_field", False)
+        or resource["dataspatial_wkt_field"] != WKT_FIELD_NAME
     ):
         toolkit.get_action("resource_patch")(
             DEFAULT_CONTEXT,
