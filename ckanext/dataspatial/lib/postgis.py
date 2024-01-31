@@ -21,7 +21,8 @@ from ckanext.dataspatial.lib.db import (
 )
 from ckanext.dataspatial.lib.util import (
     DEFAULT_CONTEXT,
-    WKT_FIELD_NAME, get_common_geom_type,
+    WKT_FIELD_NAME,
+    get_common_geom_type,
 )
 from ckanext.dataspatial.types import (
     StatusCallback,
@@ -113,6 +114,7 @@ def populate_postgis_columns(
     lat_field: str = None,
     lng_field: str = None,
     wkt_field: str = None,
+    geom_type: str = "",
     connection: Optional[Connection] = None,
     status_callback: StatusCallback = lambda s, v, e: None,
 ):
@@ -122,6 +124,7 @@ def populate_postgis_columns(
     :param lat_field: The latitude field to populate from
     :param lng_field: The longitude field to populate from
     :param wkt_field: The Well-Known Text field to populate from
+    :param geom_type: Geometry type to be used in geom columns.
     :param connection: Database connection. If None, one will be
         created for this operation. (Default value = None)
     :param status_callback: Callable that logs status to CKAN task table
@@ -140,6 +143,7 @@ def populate_postgis_columns(
             wkt_field,
             connection=connection,
             status_callback=status_callback,
+            geom_type=geom_type,
         )
 
 
@@ -188,6 +192,7 @@ def _populate_columns_with_wkt(
     wkt_field: str = None,
     connection=None,
     status_callback: StatusCallback = lambda s, v, e: None,
+    geom_type: str = "",
 ):
     def _status_callback(value):
         status_callback(
@@ -198,10 +203,15 @@ def _populate_columns_with_wkt(
             },
         )
 
+    logger.info("🗺️ " + geom_type)
+    set_geom = f'st_geomfromtext("{wkt_field}", 4326)'
+    if "multi" in geom_type.lower():
+        set_geom = f'st_multi(st_geomfromtext("{wkt_field}", 4326))'
+
     source_sql = _get_rows_to_update_sql(resource_id, wkt_field=wkt_field)
     geom_update_sql = f"""
         UPDATE "{resource_id}"
-        SET "{GEOM_FIELD}" = st_geomfromtext("{wkt_field}", 4326)
+        SET "{GEOM_FIELD}" = {set_geom}
         WHERE _id = %s
     """
     geom_webmercator_update_sql = f"""
@@ -210,6 +220,7 @@ def _populate_columns_with_wkt(
         WHERE "{GEOM_FIELD}" IS NOT NULL 
           AND _id = %s
     """
+
     _populate_columns_in_batches(
         source_sql,
         geom_update_sql,
@@ -238,10 +249,10 @@ def prepare_and_populate_geoms(
     :param resource: CKAN Resource dict
     :param from_geojson_add: True if going from creation of new geojson file.
     """
-    if (
-        resource.get("dataspatial_latitude_field")
-        and resource.get("dataspatial_longitude_field")
-    ):
+    lat_field = resource.get("dataspatial_latitude_field")
+    lng_field = resource.get("dataspatial_longitude_field")
+
+    if lat_field and lng_field:
         if not has_postgis_columns(resource["id"]):
             logger.info(f"Creating PostGIS columns for {resource['id']}.")
             status_callback(
@@ -261,16 +272,14 @@ def prepare_and_populate_geoms(
 
         populate_postgis_columns(
             resource["id"],
-            lat_field=resource["dataspatial_latitude_field"],
-            lng_field=resource["dataspatial_longitude_field"],
+            lat_field=lat_field,
+            lng_field=lng_field,
             status_callback=status_callback,
         )
 
     elif from_geojson_add or resource["dataspatial_wkt_field"]:
         wkt_field_name = (
-            WKT_FIELD_NAME
-            if from_geojson_add
-            else resource["dataspatial_wkt_field"]
+            WKT_FIELD_NAME if from_geojson_add else resource["dataspatial_wkt_field"]
         )
         wkt_values = get_wkt_values(
             resource["id"],
@@ -302,7 +311,6 @@ def prepare_and_populate_geoms(
         },
     )
     logger.info(f"Geometry columns for {resource['id']} populated.")
-
 
 
 def _get_rows_to_update_sql(
