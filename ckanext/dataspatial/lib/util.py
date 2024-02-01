@@ -1,10 +1,13 @@
 # encoding: utf-8
+import logging
 import os
 from pathlib import Path
 
 from ckan.plugins import toolkit
 from ckanext.datastore.backend.postgres import identifier
 from geomet import wkt
+
+from ckanext.dataspatial.lib.db import get_connection
 
 STORAGE_PATH = Path(toolkit.config.get("ckan.storage_path"))
 
@@ -14,6 +17,9 @@ from ckan.model import parse_db_config
 
 
 import ckanext.dataspatial as dataspatial_module
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_common_geom_type(wkt_values: list[str]) -> str:
@@ -81,12 +87,23 @@ def _has_necessary_metadata(resource: dict):
 
 def update_fulltext_trigger():
     parsed_db = parse_db_config("ckan.datastore.write_url")
+
+    datastore_db = parsed_db["db_name"]
     write_user = parsed_db["db_user"]
+
     template_filename = os.path.join(
         os.path.dirname(dataspatial_module.__file__), "update_triggers.sql"
     )
     with open(template_filename) as fp:
         template = fp.read()
-    return template.format(
+    sql = template.format(
+        datastoredb=identifier(datastore_db),
         writeuser=identifier(write_user),
-    )
+    ).replace("%", "%%")
+    print("🔴", sql)
+    logger.debug(sql)
+
+    with get_connection(write=True) as conn:
+        results = conn.execute(sql)
+    logger.debug(results)
+    print(results)

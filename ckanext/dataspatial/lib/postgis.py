@@ -203,7 +203,6 @@ def _populate_columns_with_wkt(
             },
         )
 
-    logger.info("🗺️ " + geom_type)
     set_geom = f'st_geomfromtext("{wkt_field}", 4326)'
     if "multi" in geom_type.lower():
         set_geom = f'st_multi(st_geomfromtext("{wkt_field}", 4326))'

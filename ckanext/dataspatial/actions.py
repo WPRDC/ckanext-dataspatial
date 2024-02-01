@@ -113,7 +113,6 @@ def dataspatial_submit(context: Context, data_dict: DataDict) -> bool:
         "state": "submitting",
         "key": TASK_KEY,
         "value": "{}",
-        "error": None,
     }
     if extant_task_id:
         task["id"] = extant_task_id
@@ -191,6 +190,8 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
                 pass
 
     error = data_dict.get("error")
+    if error:
+        logger.error(error)
     saved_value = json.loads(task["value"])
     value = data_dict.get("value", {})
 
@@ -199,7 +200,7 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
     task["last_updated"] = str(datetime.datetime.utcnow())
     task["error"] = error
     task["value"] = json.dumps({**saved_value, **value})
-    logger.info(task["value"])
+    logger.debug(task["value"])
     context["ignore_auth"] = True
     toolkit.get_action("task_status_update")(context, task)
 
@@ -227,16 +228,21 @@ def dataspatial_status(context: Context, data_dict: DataDict) -> StatusResult:
 
         status = task.get("state", "UNKNOWN")
         last_updated = task.get("last_updated")
+        # parse json value
         value: dict = json.loads(task.get("value", {}))
         job_id: str = value.get("job_id")
         rows_completed = value.get("rows_completed")
         notes = value.get("notes")
+        error = task.get("error")
+
+        logger.debug(error)
+        logger.debug(notes)
 
         return {
             "job_id": job_id,
             "status": status,
             "rows_completed": rows_completed,
-            "notes": notes,
+            "notes": error or notes,
             "last_updated": last_updated,
         }
     except NotFound:

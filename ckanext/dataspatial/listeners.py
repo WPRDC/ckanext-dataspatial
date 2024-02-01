@@ -18,7 +18,7 @@ def new_resource_listener(sender, **kwargs):
     if sender in ["resource_create"]:
         resource = kwargs["result"]
         if resource["format"].lower() == "geojson":
-            logger.info("🗺️ Loading/updating GeoJSON in datastore.")
+            logger.info("Loading/updating GeoJSON in datastore.")
             load_geojson_to_datastore(resource["id"])
 
     # when a tabular file is pushed to the datastore
