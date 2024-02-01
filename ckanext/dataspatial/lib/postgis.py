@@ -300,6 +300,7 @@ def prepare_and_populate_geoms(
             resource["id"],
             wkt_field=wkt_field_name,
             status_callback=status_callback,
+            geom_type=geo_type,
         )
 
     toolkit.get_action("resource_patch")(
