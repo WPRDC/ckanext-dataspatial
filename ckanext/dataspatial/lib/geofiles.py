@@ -17,6 +17,7 @@ from ckanext.dataspatial.lib.util import (
 )
 from ckanext.dataspatial.types import StatusCallback, GeoreferenceStatus
 
+
 logger = logging.getLogger(__name__)
 
 

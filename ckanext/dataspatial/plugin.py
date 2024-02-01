@@ -113,7 +113,7 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
 
     # IClick
     def get_commands(self):
-        return [cli.dataspatial]
+        return [cli.dataspatial, cli.dataspatial_init]
 
     # IBlueprint
 

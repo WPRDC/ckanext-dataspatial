@@ -1,12 +1,19 @@
 # encoding: utf-8
+import os
 from pathlib import Path
 
 from ckan.plugins import toolkit
+from ckanext.datastore.backend.postgres import identifier
 from geomet import wkt
 
 STORAGE_PATH = Path(toolkit.config.get("ckan.storage_path"))
 
 DEFAULT_CONTEXT = {"user": "default"}
+
+from ckan.model import parse_db_config
+
+
+import ckanext.dataspatial as dataspatial_module
 
 
 def get_common_geom_type(wkt_values: list[str]) -> str:
@@ -70,3 +77,16 @@ def _has_necessary_metadata(resource: dict):
         resource["dataspatial_latitude_field"]
         and resource["dataspatial_longitude_field"]
     ) or resource["dataspatial_wkt_field"]
+
+
+def update_fulltext_trigger():
+    parsed_db = parse_db_config("ckan.datastore.write_url")
+    write_user = parsed_db["db_user"]
+    template_filename = os.path.join(
+        os.path.dirname(dataspatial_module.__file__), "update_triggers.sql"
+    )
+    with open(template_filename) as fp:
+        template = fp.read()
+    return template.format(
+        writeuser=identifier(write_user),
+    )

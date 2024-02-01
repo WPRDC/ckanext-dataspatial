@@ -9,6 +9,7 @@ from ckanext.dataspatial.lib.postgis import (
     create_postgis_index,
     populate_postgis_columns,
 )
+from ckanext.dataspatial.lib.util import update_fulltext_trigger
 from ckanext.dataspatial.types import GEOMETRY_TYPES
 
 log = logging.getLogger("ckan")
@@ -34,14 +35,19 @@ def dataspatial(
     ACTION: one of (create-columns | create-index | populate-columns)
     RESOURCE_ID: ID of resource to modify/update
     """
-    if action == "file":
-        load_geojson_to_datastore(resource_id)
-
     # Validate arguments
-    if action not in ["create-columns", "create-index", "populate-columns"]:
+    if action not in [
+        "create-columns",
+        "create-index",
+        "populate-columns",
+        "load-file",
+    ]:
         raise click.BadArgumentUsage(
             "Please specify one of create-columns, create-index or populate-columns"
         )
+
+    if action == "load-file":
+        load_geojson_to_datastore(resource_id)
 
     if action == "populate-columns" and (
         not (latitude_field and longitude_field) and not wkt_field
@@ -72,4 +78,11 @@ def dataspatial(
             lng_field=longitude_field,
             wkt_field=wkt_field,
         )
+    click.echo("Done!")
+
+
+@click.command()
+def dataspatial_init():
+    click.echo("Updating _full_text update trigger.")
+    update_fulltext_trigger()
     click.echo("Done!")
