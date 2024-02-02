@@ -43,6 +43,14 @@
                 {% endif %}
             </td>
         </tr>
+      <tr>
+            <th>{{ _('Error') }}</th>
+            <td>
+                {% if status.error %}
+                    {{ _(status.error) }}
+                {% endif %}
+            </td>
+        </tr>
     <tr></tr>
     </table>
 

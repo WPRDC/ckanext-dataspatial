@@ -203,9 +203,9 @@ def _populate_columns_with_wkt(
             },
         )
 
-    set_geom = f'st_geomfromtext("{wkt_field}", 4326)'
+    set_geom = f'st_force2d(st_geomfromtext("{wkt_field}", 4326))'
     if "multi" in geom_type.lower():
-        set_geom = f'st_multi(st_geomfromtext("{wkt_field}", 4326))'
+        set_geom = f'st_multi(st_force2d(st_geomfromtext("{wkt_field}", 4326)))'
 
     source_sql = _get_rows_to_update_sql(resource_id, wkt_field=wkt_field)
     geom_update_sql = f"""

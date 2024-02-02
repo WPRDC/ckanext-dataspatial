@@ -239,7 +239,8 @@ def dataspatial_status(context: Context, data_dict: DataDict) -> StatusResult:
             "job_id": job_id,
             "status": status,
             "rows_completed": rows_completed,
-            "notes": error or notes,
+            "notes": notes,
+            "error": error,
             "last_updated": last_updated,
         }
     except NotFound:
