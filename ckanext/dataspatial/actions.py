@@ -13,7 +13,7 @@ from dateutil.parser import parse as parse_date
 from ckanext.dataspatial import jobs
 from ckanext.dataspatial.jobs import JOB_TYPE
 from ckanext.dataspatial.lib.postgis import prepare_and_populate_geoms
-from ckanext.dataspatial.types import GeoreferenceStatus, StatusResult
+from ckanext.dataspatial.lib.types import GeoreferenceStatus, StatusResult
 
 enqueue_job = toolkit.enqueue_job
 get_queue = rq_jobs.get_queue
@@ -113,6 +113,7 @@ def dataspatial_submit(context: Context, data_dict: DataDict) -> bool:
         "state": "submitting",
         "key": TASK_KEY,
         "value": "{}",
+        "error": None,
     }
     if extant_task_id:
         task["id"] = extant_task_id
@@ -139,6 +140,7 @@ def dataspatial_submit(context: Context, data_dict: DataDict) -> bool:
     task["value"] = json.dumps({"job_id": job.id})
     task["state"] = GeoreferenceStatus.SUBMITTING.value
     task["last_updated"] = str(datetime.datetime.utcnow())
+    task["error"] = None
     toolkit.get_action("task_status_update")(
         {"session": model.meta.create_local_session(), "ignore_auth": True}, task
     )
@@ -192,15 +194,13 @@ def dataspatial_hook(context: Context, data_dict: DataDict):
     error = data_dict.get("error")
     if error:
         logger.error(error)
-    saved_value = json.loads(task["value"])
     value = data_dict.get("value", {})
 
     # update task status
     task["state"] = status.value
     task["last_updated"] = str(datetime.datetime.utcnow())
     task["error"] = error
-    task["value"] = json.dumps({**saved_value, **value})
-    logger.debug(task["value"])
+    task["value"] = json.dumps(value)
     context["ignore_auth"] = True
     toolkit.get_action("task_status_update")(context, task)
 
@@ -234,9 +234,6 @@ def dataspatial_status(context: Context, data_dict: DataDict) -> StatusResult:
         rows_completed = value.get("rows_completed")
         notes = value.get("notes")
         error = task.get("error")
-
-        logger.debug(error)
-        logger.debug(notes)
 
         return {
             "job_id": job_id,

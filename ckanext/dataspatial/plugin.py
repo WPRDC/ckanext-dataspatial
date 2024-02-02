@@ -43,7 +43,6 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
         toolkit.add_template_directory(config_, "templates")
 
     # IDatasetForm
-
     def _modify_package_schema(self, schema) -> Schema:
         cast(Schema, schema["resources"]).update(dataspatial_modify_resource_schema())
         return schema

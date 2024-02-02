@@ -10,7 +10,7 @@ from ckanext.dataspatial.lib.postgis import (
     populate_postgis_columns,
 )
 from ckanext.dataspatial.lib.util import update_fulltext_trigger
-from ckanext.dataspatial.types import GEOMETRY_TYPES
+from ckanext.dataspatial.lib.types import GEOMETRY_TYPES
 
 log = logging.getLogger("ckan")
 

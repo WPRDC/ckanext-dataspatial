@@ -1,5 +1,5 @@
 from ckan.plugins import toolkit
-from ckanext.dataspatial.types import GeoreferenceStatus
+from ckanext.dataspatial.lib.types import GeoreferenceStatus
 
 
 def dataspatial_status_description(status: dict) -> str:
@@ -14,7 +14,6 @@ def dataspatial_status_description(status: dict) -> str:
             GeoreferenceStatus.ERROR.value: _("Error"),
             GeoreferenceStatus.NOT_STARTED.value: _("Not georeferenced"),
         }
-
         return captions.get(status["status"], _(status["status"]))
     else:
         return _("Not Uploaded Yet")

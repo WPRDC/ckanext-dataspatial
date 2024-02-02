@@ -5,7 +5,7 @@ from ckan.plugins import toolkit
 from ckan.types import Context
 
 from ckanext.dataspatial.lib import geofiles, postgis
-from ckanext.dataspatial.types import StatusCallback, GeoreferenceStatus
+from ckanext.dataspatial.lib.types import StatusCallback, GeoreferenceStatus
 
 JOB_TYPE = "dataspatial_georeference"
 

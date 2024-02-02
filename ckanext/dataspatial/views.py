@@ -7,8 +7,7 @@ from ckan.common import _
 from flask import Blueprint
 from flask.views import MethodView
 
-from ckanext.dataspatial.actions import TASK_TYPE, TASK_KEY
-from ckanext.dataspatial.types import StatusResult
+from ckanext.dataspatial.lib.types import StatusResult
 
 dataspatial = Blueprint("dataspatial", __name__)
 

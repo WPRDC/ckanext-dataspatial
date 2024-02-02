@@ -1,8 +1,9 @@
 # encoding: utf-8
 import json
 import logging
-from typing import Any, Union
+from typing import Any, Union, Iterable
 
+import geojson
 from ckan.logic import NotFound
 from ckan.plugins import toolkit
 from geomet import wkt
@@ -15,18 +16,76 @@ from ckanext.dataspatial.lib.util import (
     get_resource_file_path,
     DEFAULT_CONTEXT,
 )
-from ckanext.dataspatial.types import StatusCallback, GeoreferenceStatus
-
+from ckanext.dataspatial.lib.types import StatusCallback, GeoreferenceStatus
 
 logger = logging.getLogger(__name__)
 
 
-def geojson2wkt(geojson: dict) -> str | None:
+def validate_sub_geoms(geom_type, sub_geom_type, coords):
+    """
+    Validates set of geometries returning only the valid ones
+    """
+    valid_sub_geoms = []
+    for sub_coords in coords:
+        sub_geom = sub_geom_type(sub_coords)
+        if sub_geom.is_valid:
+            valid_sub_geoms.append(sub_geom)
+
+    if valid_sub_geoms:
+        return geom_type(coords)
+    return None
+
+
+def validate_geojson_geom(geojson_geo: dict) -> dict | None:
+    """Validates a GeoJSON geometry.
+    Returns the geometry if valid, otherwise returns None
+    """
+    geo_type = geojson_geo.get("type").lower()
+
+    # load geom into geojson library geometry
+    data = None
+    coords = geojson_geo.get("coordinates")
+    if geo_type == "point":
+        data = geojson.Point(coords)
+    elif geo_type == "linestring":
+        data = geojson.LineString(coords)
+    elif geo_type == "polygon":
+        data = geojson.Polygon(coords)
+
+    # for collections, build them from validated child geoms
+    elif geo_type == "multipoint":
+        data = validate_sub_geoms(geojson.MultiPoint, geojson.Point, coords)
+    elif geo_type == "multilinestring":
+        data = validate_sub_geoms(geojson.MultiLineString, geojson.LineString, coords)
+    elif geo_type == "multipolygon":
+        data = validate_sub_geoms(geojson.MultiPolygon, geojson.Polygon, coords)
+
+    if data and data.is_valid:
+        return data
+    return None
+
+
+def geojson2wkt(geojson_geo: dict) -> str | None:
+    geo_data = validate_geojson_geom(geojson_geo)
     try:
-        return wkt.dumps(geojson)
+        if geo_data:
+            return wkt.dumps(geo_data, decimals=7)
+        else:
+            return None
     except Exception as e:
         logger.warning(e)
         return None
+
+
+def to_row(feature: dict, fields: Iterable[dict]) -> dict:
+    row = {}
+    # transfer available fields
+    for field in fields:
+        row[field] = feature["properties"].get(field, None)
+    wkt_value = geojson2wkt(feature["geometry"])
+    row[WKT_FIELD_NAME] = wkt_value
+
+    return row
 
 
 def load_geojson_to_datastore(
@@ -49,10 +108,15 @@ def load_geojson_to_datastore(
     with open(get_resource_file_path(resource_id)) as f:
         geojson: dict = json.load(f)
 
+    #   find the full set of keys
+    fields = set()
+    for feature in geojson["features"]:
+        fields |= set(feature["properties"].keys())
+
     rows: list[dict[str, Any]] = [
-        {**row["properties"], WKT_FIELD_NAME: geojson2wkt(row["geometry"])}
-        for row in geojson["features"]
-        if row["geometry"]
+        to_row(feature, fields)
+        for feature in geojson["features"]
+        if feature["geometry"]
     ]
 
     # get datastore_create options

@@ -36,8 +36,15 @@ def get_common_geom_type(wkt_values: list[str]) -> str:
     :returns: the common geometry type name in all caps
     """
     geom_types = list(
-        set([wkt.loads(wkt_value)["type"].upper() for wkt_value in wkt_values])
+        set(
+            [
+                wkt.loads(wkt_value)["type"].upper()
+                for wkt_value in wkt_values
+                if wkt_value is not None
+            ]
+        )
     )
+
     if not geom_types:
         raise TypeError("At least one WKT value must be provided.")
     if len(geom_types) == 1:
@@ -100,10 +107,8 @@ def update_fulltext_trigger():
         datastoredb=identifier(datastore_db),
         writeuser=identifier(write_user),
     ).replace("%", "%%")
-    print("🔴", sql)
     logger.debug(sql)
 
     with get_connection(write=True) as conn:
         results = conn.execute(sql)
     logger.debug(results)
-    print(results)

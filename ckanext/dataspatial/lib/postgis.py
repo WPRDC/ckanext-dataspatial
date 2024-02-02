@@ -24,7 +24,7 @@ from ckanext.dataspatial.lib.util import (
     DEFAULT_CONTEXT,
     get_common_geom_type,
 )
-from ckanext.dataspatial.types import (
+from ckanext.dataspatial.lib.types import (
     StatusCallback,
     SpecificStatusCallback,
     GeoreferenceStatus,
