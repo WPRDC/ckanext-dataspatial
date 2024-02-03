@@ -128,7 +128,7 @@ def load_geojson_to_datastore(
     # ensure metadata lists the correct WKT field name
     if (
         not resource.get("dataspatial_wkt_field", False)
-        or resource["dataspatial_wkt_field"] != WKT_FIELD_NAME
+        or resource.get("dataspatial_wkt_field") != WKT_FIELD_NAME
     ):
         toolkit.get_action("resource_patch")(
             DEFAULT_CONTEXT,

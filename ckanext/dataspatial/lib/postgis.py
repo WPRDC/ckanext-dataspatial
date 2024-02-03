@@ -276,9 +276,11 @@ def prepare_and_populate_geoms(
             status_callback=status_callback,
         )
 
-    elif from_geojson_add or resource["dataspatial_wkt_field"]:
+    elif from_geojson_add or resource.get("dataspatial_wkt_field"):
         wkt_field_name = (
-            WKT_FIELD_NAME if from_geojson_add else resource["dataspatial_wkt_field"]
+            WKT_FIELD_NAME
+            if from_geojson_add
+            else resource.get("dataspatial_wkt_field")
         )
         wkt_values = get_wkt_values(
             resource["id"],
@@ -308,6 +310,7 @@ def prepare_and_populate_geoms(
             "id": resource["id"],
             "dataspatial_last_geom_updated": datetime.datetime.now().isoformat(),
             "dataspatial_active": True,
+            "dataspatial_status": "active",
         },
     )
     logger.info(f"Geometry columns for {resource['id']} populated.")

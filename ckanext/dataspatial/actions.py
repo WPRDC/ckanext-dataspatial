@@ -4,7 +4,7 @@ import json
 import logging
 
 import ckan.lib.jobs as rq_jobs
-from ckan.logic import NotFound
+from ckan.logic import NotFound, side_effect_free
 from ckan.plugins import toolkit
 from ckan.types import Context, DataDict
 from dateutil.parser import isoparse as parse_iso_date
@@ -302,3 +302,24 @@ def dataspatial_populate(context: Context, data_dict: DataDict):
 
     # prepare and populate the columns
     prepare_and_populate_geoms(resource)
+
+
+@side_effect_free
+def dataspatial_resource_list(context: Context, data_dict: DataDict):
+    active_resources = toolkit.get_action("resource_search")(
+        context, {"query": "dataspatial_status:active"}
+    )["results"]
+    fields = [
+        "id",
+        "package_id",
+        "url",
+        "format",
+        "dataspatial_active",
+        "dataspatial_fields_definition",
+        "dataspatial_last_geom_updated",
+        "dataspatial_status",
+    ]
+    result = []
+    for resource in active_resources:
+        result.append({field: resource.get(field) for field in fields})
+    return result

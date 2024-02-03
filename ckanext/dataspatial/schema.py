@@ -18,6 +18,7 @@ def dataspatial_modify_resource_schema() -> Schema:
     return {
         # status
         "dataspatial_active": [boolean_validator],
+        "dataspatial_status": [ignore_empty],
         "dataspatial_last_geom_updated": [isodate, ignore_empty],
         # for preparing tabular files
         "dataspatial_longitude_field": [ignore_not_sysadmin, ignore_empty],
@@ -43,6 +44,7 @@ def dataspatial_modify_resource_schema() -> Schema:
 
 def dataspatial_show_resource_schema() -> Schema:
     return {
+        "dataspatial_status": [default("inactive")],
         "dataspatial_longitude_field": [ignore_empty, default(None)],
         "dataspatial_latitude_field": [ignore_empty, default(None)],
         "dataspatial_wkt_field": [ignore_empty, default(None)],

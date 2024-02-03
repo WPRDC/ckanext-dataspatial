@@ -87,9 +87,9 @@ def out_of_sync(resource: dict):
 
 def _has_necessary_metadata(resource: dict):
     return (
-        resource["dataspatial_latitude_field"]
-        and resource["dataspatial_longitude_field"]
-    ) or resource["dataspatial_wkt_field"]
+        resource.get("dataspatial_latitude_field")
+        and resource.get("dataspatial_longitude_field")
+    ) or resource.get("dataspatial_wkt_field")
 
 
 def update_fulltext_trigger():

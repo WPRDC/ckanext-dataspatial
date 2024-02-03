@@ -7,10 +7,10 @@ from ckan.types import Schema
 
 from ckanext.dataspatial import cli, views
 from ckanext.dataspatial.actions import (
-    dataspatial_populate,
     dataspatial_submit,
     dataspatial_hook,
     dataspatial_status,
+    dataspatial_resource_list,
 )
 from ckanext.dataspatial.config import config
 from ckanext.dataspatial.helpers import dataspatial_status_description
@@ -106,8 +106,7 @@ class DataSpatialPlugin(toolkit.DefaultDatasetForm, SingletonPlugin):
             "dataspatial_submit": dataspatial_submit,
             "dataspatial_hook": dataspatial_hook,
             "dataspatial_status": dataspatial_status,
-            "populate_geom_columns": dataspatial_populate,
-            "datastore_query_extent": datastore_query_extent,
+            "dataspatial_resource_list": dataspatial_resource_list,
         }
 
     # IClick
