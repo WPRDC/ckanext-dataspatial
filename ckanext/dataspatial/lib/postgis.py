@@ -247,7 +247,7 @@ def _populate_columns_with_wkb(
         status_callback(
             GeoreferenceStatus.WORKING,
             value={
-                "notes": "Populating geom columns using Well-Known Text.",
+                "notes": "Populating geom columns using Well-Known Binary.",
                 **value,
             },
         )
