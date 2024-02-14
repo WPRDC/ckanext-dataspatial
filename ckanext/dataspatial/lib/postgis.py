@@ -482,3 +482,4 @@ def query_extent(data_dict: DataDict, connection: Optional[Connection] = None):
     if result["geom_count"] > 0:
         result["bounds"] = ((r["ymin"], r["xmin"]), (r["ymax"], r["xmax"]))
     return result
+
