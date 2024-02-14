@@ -5,7 +5,7 @@ from typing import Optional, Generator, Iterable, Union
 from ckan.plugins import PluginImplementations, toolkit
 from ckanext.datastore.interfaces import IDatastore
 from sqlalchemy import create_engine, sql, text
-from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.engine import Connection, Engine, Row
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import Select
 from sqlalchemy.sql.elements import TextClause
@@ -208,7 +208,8 @@ def get_field_values(
     connection: Connection,
     resource_id: str,
     field: str,
-) -> list[str]:
+    is_bytes: bool = False
+) -> list[str | bytes]:
     """Get a list of distinct values within a datastore field.
 
     :param connection: database connection
@@ -216,10 +217,8 @@ def get_field_values(
     :param field: field name to query
     :returns: a list of distinct values
     """
-    query: TextClause = text(
-        f"""
-    SELECT "{field}" FROM "{resource_id}"
-    """
-    )
-    results: Iterable[tuple[str]] = connection.execute(query)
+    query: TextClause = text(f"""SELECT "{field}" FROM "{resource_id}";""")
+    results: Iterable[Row] = connection.execute(query).fetchall()
+    if is_bytes is True:
+        return [bytes(item[0]) for item in results]
     return [item[0] for item in results]

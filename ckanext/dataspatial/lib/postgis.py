@@ -9,7 +9,7 @@ from ckanext.datastore import backend as datastore_db
 from ckanext.datastore.helpers import is_single_statement
 
 from ckanext.dataspatial.config import config
-from ckanext.dataspatial.lib.constants import WKT_FIELD_NAME
+from ckanext.dataspatial.lib.constants import WKB_FIELD_NAME
 from ckanext.dataspatial.lib.db import (
     create_geom_column,
     create_index,
@@ -20,15 +20,12 @@ from ckanext.dataspatial.lib.db import (
     invoke_search_plugins,
     get_field_values,
 )
-from ckanext.dataspatial.lib.util import (
-    DEFAULT_CONTEXT,
-    get_common_geom_type,
-)
 from ckanext.dataspatial.lib.types import (
     StatusCallback,
     SpecificStatusCallback,
     GeoreferenceStatus,
 )
+from ckanext.dataspatial.lib.util import DEFAULT_CONTEXT, get_common_geom_type
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +61,7 @@ def has_postgis_index(resource_id: str, connection: Optional[Connection] = None)
     :param resource_id: The resource to test
     :param connection: Database connection. If None, one will be
         created for this operation. (Default value = None)
-    :returns: s: True if the resource database already has the index for the
+    :returns: True if the resource database already has the index for the
               postgis columns
     """
     with get_connection(connection) as c:
@@ -113,6 +110,7 @@ def populate_postgis_columns(
     resource_id: str,
     lat_field: str = None,
     lng_field: str = None,
+    wkb_field: str = None,
     wkt_field: str = None,
     geom_type: str = "",
     connection: Optional[Connection] = None,
@@ -124,6 +122,7 @@ def populate_postgis_columns(
     :param lat_field: The latitude field to populate from
     :param lng_field: The longitude field to populate from
     :param wkt_field: The Well-Known Text field to populate from
+    :param wkb_field: The Well-Known Binary field to populate from
     :param geom_type: Geometry type to be used in geom columns.
     :param connection: Database connection. If None, one will be
         created for this operation. (Default value = None)
@@ -141,6 +140,14 @@ def populate_postgis_columns(
         _populate_columns_with_wkt(
             resource_id,
             wkt_field,
+            connection=connection,
+            status_callback=status_callback,
+            geom_type=geom_type,
+        )
+    elif wkb_field:
+        _populate_columns_with_wkb(
+            resource_id,
+            wkb_field,
             connection=connection,
             status_callback=status_callback,
             geom_type=geom_type,
@@ -207,7 +214,7 @@ def _populate_columns_with_wkt(
     if "multi" in geom_type.lower():
         set_geom = f'st_multi(st_force2d(st_geomfromtext("{wkt_field}", 4326)))'
 
-    source_sql = _get_rows_to_update_sql(resource_id, wkt_field=wkt_field)
+    source_sql = _get_rows_to_update_sql(resource_id, source_geom_field=wkt_field)
     geom_update_sql = f"""
         UPDATE "{resource_id}"
         SET "{GEOM_FIELD}" = {set_geom}
@@ -229,12 +236,72 @@ def _populate_columns_with_wkt(
     )
 
 
-def get_wkt_values(
-    resource_id: str, wkt_field: str, connection: Optional[Connection] = None
-) -> list[str]:
+def _populate_columns_with_wkb(
+    resource_id: str,
+    wkb_field: str = None,
+    connection=None,
+    status_callback: StatusCallback = lambda s, v, e: None,
+    geom_type: str = "",
+):
+    def _status_callback(value):
+        status_callback(
+            GeoreferenceStatus.WORKING,
+            value={
+                "notes": "Populating geom columns using Well-Known Text.",
+                **value,
+            },
+        )
+
+    set_geom = f'ST_Force2D(ST_GeomFromWKB("{wkb_field}", 4326))'
+    if "multi" in geom_type.lower():
+        set_geom = f'ST_Multi(ST_Force2D(ST_GeomFromWKB("{wkb_field}", 4326)))'
+
+    source_sql = _get_rows_to_update_sql(resource_id, source_geom_field=wkb_field)
+
+    geom_update_sql = f"""
+        UPDATE "{resource_id}"
+        SET "{GEOM_FIELD}" = {set_geom}
+        WHERE _id = %s
+    """
+    geom_webmercator_update_sql = f"""
+        UPDATE "{resource_id}"
+        SET "{GEOM_MERCATOR_FIELD}" = st_transform("{GEOM_FIELD}", 3857)
+        WHERE "{GEOM_FIELD}" IS NOT NULL 
+          AND _id = %s
+    """
+
+    _populate_columns_in_batches(
+        source_sql,
+        geom_update_sql,
+        geom_webmercator_update_sql,
+        connection=connection,
+        status_callback=_status_callback,
+    )
+
+
+def connect_and_get_field_values(resource_id: str, field: str, is_bytes: bool = False) -> list:
     c: Connection
-    with get_connection(connection, write=True) as c:
-        return get_field_values(c, resource_id, wkt_field)
+    with get_connection() as c:
+        values = get_field_values(c, resource_id, field, is_bytes=is_bytes)
+        return values
+
+def prep_table(
+    resource,
+    geom_type,
+    status_callback: StatusCallback = lambda status: None,
+):
+    if not has_postgis_columns(resource["id"]):
+        logger.info(f"Creating PostGIS columns for {resource['id']}.")
+        status_callback(GeoreferenceStatus.WORKING, value={"notes": "Creating Columns"})
+        create_postgis_columns(resource["id"], geom_type)
+
+    if not has_postgis_index(resource["id"]):
+        logger.info(f"Creating PostGIS indexes for {resource['id']}.")
+        status_callback(
+            GeoreferenceStatus.WORKING,
+            value={"notes": "Indexing Geom Columns"},
+        )
+        create_postgis_index(resource["id"])
 
 
 def prepare_and_populate_geoms(
@@ -250,60 +317,42 @@ def prepare_and_populate_geoms(
     """
     lat_field = resource.get("dataspatial_latitude_field")
     lng_field = resource.get("dataspatial_longitude_field")
+    wkt_field = resource.get("dataspatial_wkt_field")
 
+    # common args
+    populate_args = {"resource_id": resource['id'], "status_callback": status_callback}
+
+    # get format-specific args
     if lat_field and lng_field:
-        if not has_postgis_columns(resource["id"]):
-            logger.info(f"Creating PostGIS columns for {resource['id']}.")
-            status_callback(
-                GeoreferenceStatus.WORKING, value={"notes": "Creating Columns"}
-            )
-            create_postgis_columns(resource["id"], "POINT")
-
-        if not has_postgis_index(resource["id"]):
-            logger.info(f"Creating PostGIS indexes for {resource['id']}.")
-            status_callback(
-                GeoreferenceStatus.WORKING,
-                value={"notes": "Indexing Geom Columns"},
-            )
-            create_postgis_index(resource["id"])
-
-        logger.info(f"Populating PostGIS columns for {resource['id']}/")
-
-        populate_postgis_columns(
-            resource["id"],
-            lat_field=lat_field,
-            lng_field=lng_field,
-            status_callback=status_callback,
+        populate_args["lat_field"] = lat_field
+        populate_args["lng_field"] = lng_field
+        geom_type = "POINT"
+    elif from_geojson_add or wkt_field:
+        if from_geojson_add:
+            populate_args["wkb_field"] = WKB_FIELD_NAME
+            values = connect_and_get_field_values(resource["id"], WKB_FIELD_NAME, is_bytes=True)
+            geom_format = "wkb"
+        else:
+            populate_args["wkt_field"] = wkt_field
+            values = connect_and_get_field_values(resource["id"], wkt_field)
+            geom_format = "wkt"
+        geom_type = get_common_geom_type(values, geom_format=geom_format)
+    else:
+        raise Exception(
+            "If not uploading a geojson file, lat/long or wkt fields are required."
         )
 
-    elif from_geojson_add or resource.get("dataspatial_wkt_field"):
-        wkt_field_name = (
-            WKT_FIELD_NAME
-            if from_geojson_add
-            else resource.get("dataspatial_wkt_field")
-        )
-        wkt_values = get_wkt_values(
-            resource["id"],
-            wkt_field_name,
-        )
-        geo_type = get_common_geom_type(wkt_values)
+    populate_args["geom_type"] = geom_type
 
-        if not has_postgis_columns(resource["id"]):
-            logger.info(f"Creating PostGIS columns for {resource['id']}.")
-            create_postgis_columns(resource["id"], geo_type)
-        if not has_postgis_index(resource["id"]):
-            logger.info(f"Creating PostGIS indexes for {resource['id']}.")
-            create_postgis_index(resource["id"])
+    # add geom fields and indexes
+    prep_table(resource, geom_type, status_callback=status_callback)
 
-        logger.info(f"Populating PostGIS columns for {resource['id']}.")
+    # convert source data to postgis geometries
+    logger.info(f"Populating PostGIS columns for {resource['id']}.")
+    logger.debug(populate_args)
+    populate_postgis_columns(**populate_args)
 
-        populate_postgis_columns(
-            resource["id"],
-            wkt_field=wkt_field_name,
-            status_callback=status_callback,
-            geom_type=geo_type,
-        )
-
+    # update metadata
     toolkit.get_action("resource_patch")(
         DEFAULT_CONTEXT,
         {
@@ -320,15 +369,15 @@ def _get_rows_to_update_sql(
     resource_id: str,
     latitude_field: str = None,
     longitude_field: str = None,
-    wkt_field: str = None,
+    source_geom_field: str = None,
 ) -> str:
     source_clause = ""
     if latitude_field and longitude_field:
         source_clause = (
             f'AND ("{latitude_field}" IS NOT NULL AND "{longitude_field}" IS NOT NULL)'
         )
-    if wkt_field:
-        source_clause = f'AND "{wkt_field}" IS NOT NULL'
+    if source_geom_field:
+        source_clause = f'AND "{source_geom_field}" IS NOT NULL'
 
     return f"""
           SELECT _id
@@ -400,6 +449,7 @@ def query_extent(data_dict: DataDict, connection: Optional[Connection] = None):
 
     # Call plugin to obtain correct where statement
     (ts_query, where_clause, values) = invoke_search_plugins(data_dict, field_types)
+
     # Prepare and run our query
     query = """
         SELECT COUNT(r) AS count,

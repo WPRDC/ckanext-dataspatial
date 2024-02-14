@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ckan.plugins import toolkit
 from ckanext.datastore.backend.postgres import identifier
-from geomet import wkt
+from geomet import wkt, wkb
 
 from ckanext.dataspatial.lib.db import get_connection
 
@@ -22,8 +22,25 @@ import ckanext.dataspatial as dataspatial_module
 logger = logging.getLogger(__name__)
 
 
-def get_common_geom_type(wkt_values: list[str]) -> str:
-    """Finds the cdommon geometry type from a list of WKT geometries.
+def load_wkb(wkb_data: bytes | str):
+    data = wkb_data
+    if type(wkb_data) == str:
+        data = bytes.fromhex(wkb_data[2:])
+    return wkb.loads(data)
+
+def dump_wkb(geojson: dict):
+    return wkb.dumps(geojson)
+
+
+def load_wkt(wkt_data: str):
+    return wkt.loads(wkt_data)
+
+def dump_wkt(geojson: dict):
+    return wkt.dumps(geojson)
+
+
+def get_common_geom_type(values: list[str | bytes], geom_format="wkt") -> str:
+    """Finds the common geometry type from a list of WKT geometries.
 
     If only one type is present, it is returned.
 
@@ -35,18 +52,19 @@ def get_common_geom_type(wkt_values: list[str]) -> str:
 
     :returns: the common geometry type name in all caps
     """
+    load = load_wkb if geom_format == "wkb" else load_wkt
     geom_types = list(
         set(
             [
-                wkt.loads(wkt_value)["type"].upper()
-                for wkt_value in wkt_values
-                if wkt_value is not None
+                load(value)["type"].upper()
+                for value in values
+                if value is not None
             ]
         )
     )
 
     if not geom_types:
-        raise TypeError("At least one WKT value must be provided.")
+        raise TypeError(f"At least one {geom_format.upper()} value must be provided.")
     if len(geom_types) == 1:
         return geom_types[0]
     if len(geom_types) > 2:
@@ -55,6 +73,7 @@ def get_common_geom_type(wkt_values: list[str]) -> str:
     ordered_types: list[str] = sorted(geom_types, key=lambda x: len(x))
     if ordered_types[0] in ordered_types[1]:
         return ordered_types[1].upper()
+
     return "GEOMETRYCOLLECTION"
 
 

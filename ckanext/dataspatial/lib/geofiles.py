@@ -6,17 +6,12 @@ from typing import Any, Union, Iterable
 import geojson
 from ckan.logic import NotFound
 from ckan.plugins import toolkit
-from geomet import wkt
+from geomet import wkb
 
-from ckanext.dataspatial.lib.constants import WKT_FIELD_NAME
-from ckanext.dataspatial.lib.postgis import (
-    prepare_and_populate_geoms,
-)
-from ckanext.dataspatial.lib.util import (
-    get_resource_file_path,
-    DEFAULT_CONTEXT,
-)
+from ckanext.dataspatial.lib.constants import WKB_FIELD_NAME
+from ckanext.dataspatial.lib.postgis import prepare_and_populate_geoms
 from ckanext.dataspatial.lib.types import StatusCallback, GeoreferenceStatus
+from ckanext.dataspatial.lib.util import get_resource_file_path, DEFAULT_CONTEXT
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +60,11 @@ def validate_geojson_geom(geojson_geo: dict) -> dict | None:
     return None
 
 
-def geojson2wkt(geojson_geo: dict) -> str | None:
+def geojson2wkb(geojson_geo: dict) -> bytes | None:
     geo_data = validate_geojson_geom(geojson_geo)
     try:
         if geo_data:
-            return wkt.dumps(geo_data, decimals=7)
+            return wkb.dumps(geo_data)
         else:
             return None
     except Exception as e:
@@ -82,9 +77,7 @@ def to_row(feature: dict, fields: Iterable[dict]) -> dict:
     # transfer available fields
     for field in fields:
         row[field] = feature["properties"].get(field, None)
-    wkt_value = geojson2wkt(feature["geometry"])
-    row[WKT_FIELD_NAME] = wkt_value
-
+    row[WKB_FIELD_NAME] = geojson2wkb(feature["geometry"])
     return row
 
 
@@ -98,9 +91,9 @@ def load_geojson_to_datastore(
     resource: dict = toolkit.get_action("resource_show")(
         DEFAULT_CONTEXT, {"id": resource_id}
     )
+    # validate
     if not resource or not resource["id"]:
         toolkit.ValidationError("Resource not found.")
-
     if resource["format"].lower() != "geojson":
         toolkit.ValidationError("Only GeoJSON is supported at the moment.")
 
@@ -108,42 +101,26 @@ def load_geojson_to_datastore(
     with open(get_resource_file_path(resource_id)) as f:
         geojson: dict = json.load(f)
 
-    #   find the full set of keys
-    fields = set()
+    # find the full set of keys
+    source_fields = set()
     for feature in geojson["features"]:
-        fields |= set(feature["properties"].keys())
+        source_fields |= set(feature["properties"].keys())
 
-    rows: list[dict[str, Any]] = [
-        to_row(feature, fields)
+    # records for datastore_create
+    records: list[dict[str, Any]] = [
+        to_row(feature, source_fields)
         for feature in geojson["features"]
         if feature["geometry"]
     ]
 
-    # get datastore_create options
-    try:
-        fields = resource["dataspatial_fields_definition"]
-    except KeyError:
-        fields = None
+    fields = resource.get("dataspatial_fields_definition")
+    if not fields:
+        fields = [
+            {"id": k, "type": "bytea" if k == WKB_FIELD_NAME else "text"}
+            for k in records[0].keys()
+        ]
 
-    # ensure metadata lists the correct WKT field name
-    if (
-        not resource.get("dataspatial_wkt_field", False)
-        or resource.get("dataspatial_wkt_field") != WKT_FIELD_NAME
-    ):
-        toolkit.get_action("resource_patch")(
-            DEFAULT_CONTEXT,
-            {"id": resource_id, "dataspatial_wkt_field": WKT_FIELD_NAME},
-        )
-
-    create_options: dict = {
-        "resource_id": resource_id,
-        "aliases": aliases,
-        "records": rows,
-        "fields": fields or [{"id": k, "type": "text"} for k in rows[0].keys()],
-        "force": True,
-    }
-    if indexes:
-        create_options["indexes"] = indexes
+    logger.debug(fields)
 
     # delete datastore table if it exists
     try:
@@ -156,14 +133,22 @@ def load_geojson_to_datastore(
         pass
 
     # create table in datastore
-    logger.info(f"Creating datastore table for {resource_id}")
+    create_options: dict = {
+        "resource_id": resource_id,
+        "aliases": aliases,
+        "records": records,
+        "fields": fields,
+        "force": True,
+    }
+    if indexes:
+        create_options["indexes"] = indexes
+    logger.debug(create_options["fields"])
     status_callback(
         GeoreferenceStatus.WORKING,
         value={"notes": f"Creating datastore table for {resource_id}"},
     )
     toolkit.get_action("datastore_create")({"user": "default"}, create_options)
 
-    # now that this has a datastore table with a WKT field, run it through the common process
     prepare_and_populate_geoms(
         resource,
         from_geojson_add=True,
