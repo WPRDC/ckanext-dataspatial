@@ -1,5 +1,7 @@
 [![CKAN](https://img.shields.io/badge/ckan-2.10.1-orange.svg?style=flat-square)](https://github.com/ckan/ckan)
+
 # ckanext-dataspatial
+
 _A CKAN extension that provides geospatial awareness of datastore data._
 
 <img src=".github/wprdc-mark-light.png#gh-light-mode-only" height="50px" alt="WPRDC Logo"/>
@@ -11,16 +13,19 @@ __A product of the [Western Pennsylvania Regional Data Center](https://www.wprdc
 [Built upon the work fo the Natural History Museum in London.](#acknowledgements)
 
 ## Overview
+
 This extension provides geospatial awareness of datastore data. This includes:
 
 - Geospatial searches within datasets;
-- Spatial extent of datastore searches;
-- Pushing GeoJSON data (properties and geometries) in to the datastore.
+- Pushing GeoJSON data (properties and geometries) in to the datastore;
 - Support for [PostGIS](http://postgis.net);
-- Support for tile servers that inject PostGIS data. (e.g. [martin](https://github.com/maplibre/martin))
+- Support for tile servers that injest PostGIS data. (e.g. [martin](https://github.com/maplibre/martin)).
+- _todo: Spatial extent of datastore searches_
 
 ## Installation
+
 Path variables used below:
+
 - `$INSTALL_FOLDER` (i.e. where CKAN is installed), e.g. `/usr/lib/ckan/default`
 - `$CONFIG_FILE`, e.g. `/etc/ckan/default/development.ini`
 
@@ -58,79 +63,129 @@ Path variables used below:
   ```
 
 ## Configuration
-There are a number of options that can be specified in your .ini config file. They all have defaults set, so none are _required_.
 
-Name|Description|Default
---|---|--
-`dataspatial.postgis.field`|WGS data field in the PostGIS database|\_geom
-`dataspatial.postgis.mercator_field`|Mercator field in the PostGIS database|_geom\_webmercator
+There are a number of options that can be specified in your .ini config file. They all have defaults set, so none are
+_required_.
+
+| Name                                 | Description                            | Default            |
+|--------------------------------------|----------------------------------------|--------------------|
+| `dataspatial.postgis.field`          | WGS data field in the PostGIS database | \_geom             |
+| `dataspatial.postgis.mercator_field` | Mercator field in the PostGIS database | _geom\_webmercator |
 
 ## Further Setup
-Geospatial searches and query extent work both with PostGIS and Solr, but both require further setup before they can be used.
 
 ### PostGIS
+
 To use this extension, your PostgreSQL database must have [PostGIS](http://postgis.net) support.
 
-1. Install the correct version of PostGIS for your version of PostgreSQL: https://postgis.net/documentation/getting_started/
+1. Install the correct version of PostGIS for your version of
+   PostgreSQL: https://postgis.net/documentation/getting_started/
 
-2. You will then need to create PostGIS columns on your resources. Invoking the command below will create the two columns named above (`dataspatial.postgis.field` and `dataspatial.postgis.mercator_field`) on table `$RESOURCE_ID`.  One represents the [WGS](http://en.wikipedia.org/wiki/World_Geodetic_System) (World Geodetic System) data, and one uses the web mercator projection, which is useful for generating maps.
+2. You will then need to create PostGIS columns on your resources. Invoking the command below will create the two
+   columns named above (`dataspatial.postgis.field` and `dataspatial.postgis.mercator_field`) on table `$RESOURCE_ID`.
+   One represents the [WGS](http://en.wikipedia.org/wiki/World_Geodetic_System) (World Geodetic System) data, and one
+   uses the web mercator projection, which is useful for generating maps.
     ```bash
     ckan dataspatial create-columns $RESOURCE_ID -c $CONFIG_FILE
     ```
 
 ## Usage
+
+### Geospatial metadata
+
+GeoJSON files can be parsed without any extra metadata.
+
+To parse tabular files, you must update the resources extra fields.
+
+The file can't be parsed unless either `dataspatial_longitude_field` AND `dataspatial_latitude_field` are provided
+OR `dataspatial_wkt_field` is provided.
+
+#### Writable Fields
+
+| Field                         | Description                                                                                                                                                                                                                            |
+|-------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| dataspatial_longitude_field   | Name of field that contains longitude data                                                                                                                                                                                             | 
+| dataspatial_latitude_field    | Name of field that contains latitude data                                                                                                                                                                                              | 
+| dataspatial_wkt_field         | Name of field that contains Well-Known Text data                                                                                                                                                                                       | 
+| dataspatial_fields_definition | **_Optional_**, **_Only used with GeoJSON resources._** Must be a valid [Fields](https://docs.ckan.org/en/2.10/maintaining/datastore.html#fields) json object. Used to provide field types when loading a GeoJSON into the datastore.' |
+
+#### Read-only fields
+
+| Field                         | Description                                         | 
+|-------------------------------|-----------------------------------------------------|
+| dataspatial_active            | is `true` if resource has been georeferenced        | 
+| dataspatial_status            | status of georeferencing job                        | 
+| dataspatial_last_geom_updated | timestamp of last time georeferencing was conducted | 
+
 ### Actions
-#### `populate_geom_columns`
-Updates the geospatial column when a row is updated (this is not done automatically so must be implemented in your own workflow). Equivalent to the `populate-columns` [command](#commands).
+
+#### `dataspatial_submit`
+
+Submit resource qeoreferencing job to be processed by CKAN worker.
+
+```shell
+curl -X POST https://data.wprdc.org/api/action/dataspatial_submit \
+   -H 'Content-Type: application/json' \
+   -H 'Authorization: <API_KEY>' \
+   -d '{"resource_id": "<RESOURCE_ID>"}'
+```
 
 ```python
 from ckan.plugins import toolkit
 
-toolkit.get_action('update_geom_columns')(
+toolkit.get_action('dataspatial_submit')(
     context,
     {
-        'resource_id': 'RESOURCE_ID',
-        'latitude_field': 'LATITUDE_COLUMN',
-        'longitude_field': 'LONGITUDE_COLUMN',
-        'wkt_field': 'WKT_COLUMN'
+        'resource_id': '<RESOURCE_ID>',
+    }
+)
+```
+
+#### `dataspatial_status`
+
+Get georeferencing status of a resource with the following data:
+
+| Field          | Description                                       |
+|----------------|---------------------------------------------------|
+| job_id         | ID of CKAN worker job                             |
+| status         | Status of the worker job                          |
+| last_updated   | Timestamp of last time the **status** was updated |
+| rows_completed | Number of rows parsed                             |
+| notes          | Description of current status                     |
+
+```shell
+curl -X GET https://data.wprdc.org/api/action/dataspatial_status?resource_id=<RESOURCE_ID>
+```
+
+```python
+from ckan.plugins import toolkit
+
+status = toolkit.get_action('dataspatial_status')(
+    context,
+    {
+        'resource_id': '<RESOURCE_ID>',
     }
 )
 ```
 
 #### `datastore_search`
-Searching by geospatial fields involves passing a custom filter to `datastore_search`. The filter `_tmgeom` contains a [WKT](http://en.wikipedia.org/wiki/Well-known_text) (Well-Known Text) string representing the area to be searched (currently, only the types `POLYGON` or `MULTIPOLYGON` will work). e.g.:
+
+Searching by geospatial fields involves passing a custom filter to `datastore_search`. The filter `_tmgeom` contains
+a [WKT](http://en.wikipedia.org/wiki/Well-known_text) (Well-Known Text) string representing the area to be searched (
+currently, only the types `POLYGON` or `MULTIPOLYGON` will work). e.g.:
 
 ```python
 from ckan.plugins import toolkit
 
 search_params = {
-    'resource_id': 'RESOURCE_ID',
+    'resource_id': '<RESOURCE_ID>',
     'filters': '_tmgeom:POLYGON(36 114, 36 115, 37 115, 37 114, 36 114)'
 }
 search = toolkit.get_action(u'datastore_search')(context, search_params)
 ```
 
-#### `datastore_query_extent`
-To see the geospatial extent of the query, the same parameters as above can be submitted to the action `datastore_query_extent`:
+### CLI
 
-```python
-from ckan.plugins import toolkit
-
-search_params = {
-    'resource_id': 'RESOURCE_ID',
-    'filters': '_tmgeom:POLYGON(36 114, 36 115, 37 115, 37 114, 36 114)'
-}
-search = toolkit.get_action(u'datastore_query_extent')(context, search_params)
-```
-
-This will return a `dict`:
-Key|Description
----|-----------
-`total_count`|Total number of rows matching the query
-`geom_count`|Number of rows matching the query that have geospatial information
-`bounds`|((lat min, long min), (lat max, long max)) for the queries rows
-
-### Commands
 #### `dataspatial`
 
 1. `create-columns`: create the PostGIS columns on the `$RESOURCE_ID` table.
@@ -143,17 +198,19 @@ Key|Description
     ckan dataspatial create-index $RESOURCE_ID -c $CONFIG_FILE
     ```
 
-3. `populate-columns`: populate the PostGIS columns from the given lat & long fields. Equivalent to the `update_geom_columns()` action.
+3. `populate-columns`: populate the PostGIS columns from the given lat & long fields. Equivalent to
+   the `update_geom_columns()` action.
     ```bash
     ckan dataspatial populate-columns $RESOURCE_ID -l $LATITUDE_COLUMN -g $LONGITUDE_COLUMN -c $CONFIG_FILE
     ```
 
-
 ## Testing
-*tests coming soon*
 
+_tests coming soon_
 
 ## Acknowledgements
-Based on [ckanext-dataspatial](https://github.com/NaturalHistoryMuseum/ckanext-dataspatial) created by the Natural History Museum in London, UK.
+
+Based on [ckanext-dataspatial](https://github.com/NaturalHistoryMuseum/ckanext-dataspatial) created by the Natural
+History Museum in London, UK.
 <img src=".github/nhm-logo.svg" align="left" width="150px" height="100px" hspace="40"/>
 
