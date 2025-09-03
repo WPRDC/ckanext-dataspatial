@@ -9,8 +9,6 @@ from geomet import wkt, wkb
 
 from ckanext.dataspatial.lib.db import get_connection
 
-STORAGE_PATH = Path(toolkit.config.get("ckan.storage_path"))
-
 DEFAULT_CONTEXT = {"user": "default"}
 
 from ckan.model import parse_db_config
@@ -78,13 +76,14 @@ def get_common_geom_type(values: list[str | bytes], geom_format="wkt") -> str:
 
 
 def get_resource_file_path(resource_id: str) -> Path:
-    return (
-        STORAGE_PATH
+    value = (
+        Path(toolkit.config.get("ckan.storage_path"))
         / "resources"
         / resource_id[:3]
         / resource_id[3:6]
         / resource_id[6:]
     )
+    return value
 
 
 def should_be_updated(resource: dict):

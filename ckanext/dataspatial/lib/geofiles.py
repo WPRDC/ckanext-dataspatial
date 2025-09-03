@@ -98,7 +98,9 @@ def load_geojson_to_datastore(
         toolkit.ValidationError("Only GeoJSON is supported at the moment.")
 
     # load geojson data and convert to list of dicts
-    with open(get_resource_file_path(resource_id)) as f:
+    geojson_filepath = get_resource_file_path(resource_id)
+    with open(geojson_filepath) as f:
+        logger.info(f"Loading geojson from {geojson_filepath}.")
         geojson: dict = json.load(f)
 
     # find the full set of keys
