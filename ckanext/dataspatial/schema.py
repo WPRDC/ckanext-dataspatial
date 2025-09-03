@@ -1,17 +1,16 @@
-from ckan.plugins.toolkit import get_validator, get_converter
+import ckan.plugins.toolkit as tk
 from ckan.types import Schema
 
 from ckanext.dataspatial.validators import json_object_list
 
-boolean_validator = get_validator("boolean_validator")
-isodate = get_validator("isodate")
-ignore_empty = get_validator("ignore_empty")
-ignore_not_sysadmin = get_validator("ignore_not_sysadmin")
-resource_id_validator = get_validator("resource_id_validator")
-resource_id_exists = get_validator("resource_id_exists")
-default = get_validator("default")
+boolean_validator = tk.get_validator("boolean_validator")
+isodate = tk.get_validator("isodate")
+ignore_empty = tk.get_validator("ignore_empty")
+ignore_not_sysadmin = tk.get_validator("ignore_not_sysadmin")
+resource_id_exists = tk.get_validator("resource_id_exists")
+default = tk.get_validator("default")
 
-convert_to_json_if_string = get_converter("convert_to_json_if_string")
+convert_to_json_if_string = tk.get_converter("convert_to_json_if_string")
 
 
 def dataspatial_modify_resource_schema() -> Schema:
@@ -19,7 +18,7 @@ def dataspatial_modify_resource_schema() -> Schema:
         # status
         "dataspatial_active": [boolean_validator],
         "dataspatial_status": [ignore_empty],
-        "dataspatial_last_geom_updated": [isodate, ignore_empty],
+        "dataspatial_last_geom_updated": [ignore_empty, isodate],
         # for preparing tabular files
         "dataspatial_longitude_field": [ignore_not_sysadmin, ignore_empty],
         "dataspatial_latitude_field": [ignore_not_sysadmin, ignore_empty],
@@ -35,7 +34,6 @@ def dataspatial_modify_resource_schema() -> Schema:
         "dataspatial_geom_resource": [
             ignore_not_sysadmin,
             ignore_empty,
-            resource_id_validator,
             resource_id_exists,
         ],
         "dataspatial_geom_link": [ignore_not_sysadmin, ignore_empty],
